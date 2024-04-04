@@ -28,6 +28,8 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 
+from mingpt.mamba_mixer import MixerModel
+
 class GELU(nn.Module):
     def forward(self, input):
         return F.gelu(input)
@@ -134,9 +136,10 @@ class GPT(nn.Module):
         self.drop = nn.Dropout(config.embd_pdrop)
 
         # transformer
-        self.blocks = nn.Sequential(*[Block(config) for _ in range(config.n_layer)])
+#        self.blocks = nn.Sequential(*[Block(config) for _ in range(config.n_layer)])
+        self.blocks = MixerModel(d_model = config.n_embd, n_layers = config.n_layer)
         # decoder head
-        self.ln_f = nn.LayerNorm(config.n_embd)
+#        self.ln_f = nn.LayerNorm(config.n_embd)
         self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         self.block_size = config.block_size
@@ -180,13 +183,14 @@ class GPT(nn.Module):
         decay = set()
         no_decay = set()
         # whitelist_weight_modules = (torch.nn.Linear, )
-        whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d)
+        whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d, torch.nn.Conv1d)
         blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
         for mn, m in self.named_modules():
             for pn, p in m.named_parameters():
                 fpn = '%s.%s' % (mn, pn) if mn else pn # full param name
-
-                if pn.endswith('bias'):
+                if hasattr(p, '_no_weight_decay') and p._no_weight_decay:
+                    no_decay.add(fpn)
+                elif pn.endswith('bias'):
                     # all biases will not be decayed
                     no_decay.add(fpn)
                 elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
@@ -259,7 +263,7 @@ class GPT(nn.Module):
 
         x = self.drop(token_embeddings + position_embeddings)
         x = self.blocks(x)
-        x = self.ln_f(x)
+#        x = self.ln_f(x)
         logits = self.head(x)
 
         if actions is not None and self.model_type == 'reward_conditioned':
