@@ -11,7 +11,6 @@ THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR IMPLI
 import random
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.nn import functional as F
 
 def set_seed(seed):
@@ -19,6 +18,7 @@ def set_seed(seed):
     np.random.seed(seed)
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
+    torch.backends.cudnn.deterministic = True
 
 def top_k_logits(logits, k):
     v, ix = torch.topk(logits, k)

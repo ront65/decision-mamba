@@ -4,18 +4,12 @@ import logging
 from mingpt.utils import set_seed
 import numpy as np
 import torch
-import torch.nn as nn
 from torch.nn import functional as F
-import math
 from torch.utils.data import Dataset
 from mingpt.model_atari import GPT, GPTConfig
 from mingpt.trainer_atari import Trainer, TrainerConfig
-from mingpt.utils import sample
-from collections import deque
-import random
 import torch
-import pickle
-import blosc
+#import blosc
 import argparse
 from create_dataset import create_dataset
 
@@ -28,6 +22,7 @@ parser.add_argument('--num_steps', type=int, default=500000)
 parser.add_argument('--num_buffers', type=int, default=50)
 parser.add_argument('--game', type=str, default='Breakout')
 parser.add_argument('--batch_size', type=int, default=128)
+parser.add_argument('--num_layers', type=int, default=6)
 # 
 parser.add_argument('--trajectories_per_buffer', type=int, default=10, help='Number of trajectories to sample from each of the buffers.')
 parser.add_argument('--data_dir_prefix', type=str, default='./dqn_replay/')
@@ -77,7 +72,7 @@ logging.basicConfig(
 train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps)
 
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
-                  n_layer=6, n_head=8, n_embd=128, model_type=args.model_type, max_timestep=max(timesteps))
+                  n_layer = args.num_layers, n_head=8, n_embd=128, model_type=args.model_type, max_timestep=max(timesteps))
 model = GPT(mconf)
 
 # initialize a trainer instance and kick off training
