@@ -13,6 +13,8 @@ import torch
 import argparse
 from create_dataset import create_dataset
 
+import wandb
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=123)
 parser.add_argument('--context_length', type=int, default=30)
@@ -27,6 +29,8 @@ parser.add_argument('--block_type', type=str, default='transformer')
 # 
 parser.add_argument('--trajectories_per_buffer', type=int, default=10, help='Number of trajectories to sample from each of the buffers.')
 parser.add_argument('--data_dir_prefix', type=str, default='./dqn_replay/')
+
+parser.add_argument('--wandb_project', type=str, default='default_project')
 args = parser.parse_args()
 
 set_seed(args.seed)
@@ -61,6 +65,23 @@ class StateActionReturnDataset(Dataset):
 
         return states, actions, rtgs, timesteps
 
+wandb.login()
+
+run = wandb.init(
+    # Set the project where this run will be logged
+    project=args.wandb_project,
+    config = {
+        'game' : args.game,
+        'seed' : args.seed,
+        'model' : 'transformer',
+        'n_layers' : args.num_layers,
+        'epochs' : args.epochs,
+        'batch_size' : args.batch_size,
+        'embedding_dim' : 128,
+        'lr' : 6e-4,
+    },
+)
+
 obss, actions, returns, done_idxs, rtgs, timesteps = create_dataset(args.num_buffers, args.num_steps, args.game, args.data_dir_prefix, args.trajectories_per_buffer)
 
 # set up logging
@@ -90,3 +111,4 @@ tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, learning_ra
 trainer = Trainer(model, train_dataset, None, tconf)
 
 trainer.train()
+wandb.finish()

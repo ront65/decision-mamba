@@ -31,6 +31,7 @@ import random
 import cv2
 import torch
 
+import wandb
 
 import gymnasium as gym
 from gymnasium.wrappers.atari_preprocessing import AtariPreprocessing
@@ -79,6 +80,7 @@ class Trainer:
         model, config = self.model, self.config
         raw_model = model.module if hasattr(self.model, "module") else model
         optimizer = raw_model.configure_optimizers(config)
+        wandb.watch(model, log="all")
 
         def seed_worker(worker_id):
             worker_seed = torch.initial_seed() % 2**32
@@ -144,7 +146,7 @@ class Trainer:
 
                     # report progress
                     pbar.set_description(f"epoch {epoch+1} iter {it}: train loss {loss.item():.5f}. lr {lr:e}")
-
+                    wandb.log({"loss": loss})
             if not is_train:
                 test_loss = float(np.mean(losses))
                 logger.info("test loss: %f", test_loss)
@@ -184,6 +186,8 @@ class Trainer:
                     raise NotImplementedError()
             else:
                 raise NotImplementedError()
+
+            wandb.log({"epoch": epoch, "return": eval_return})
 
     def get_returns(self, ret):
         self.model.train(False)
