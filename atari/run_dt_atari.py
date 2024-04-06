@@ -68,7 +68,7 @@ run = wandb.init(
     config = {
         'game' : args.game,
         'seed' : args.seed,
-        'model' : 'transformer',
+        'model' : args.block_type,
         'n_layers' : args.num_layers,
         'epochs' : args.epochs,
         'batch_size' : args.batch_size,
