@@ -17,8 +17,6 @@ def create_block(
     residual_in_fp32=False,
     fused_add_norm=False,
     layer_idx=None,
-    device=None,
-    dtype=None,
 ):
     if ssm_cfg is None:
         ssm_cfg = {}
@@ -49,8 +47,6 @@ class MixerModel(nn.Module):
         rms_norm: bool = False,
         fused_add_norm=False,
         residual_in_fp32=False,
-        device=None,
-        dtype=None,
     ) -> None:
 #        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
