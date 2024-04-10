@@ -1,5 +1,6 @@
 import csv
 import logging
+import sys
 # make deterministic
 from mingpt.utils import set_seed
 import numpy as np
@@ -68,6 +69,7 @@ logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s -   %(message)s",
         datefmt="%m/%d/%Y %H:%M:%S",
         level=logging.INFO,
+        stream=sys.stdout,
 )
 
 train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps)
