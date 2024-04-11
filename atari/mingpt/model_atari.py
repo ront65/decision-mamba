@@ -131,7 +131,7 @@ class GPT(nn.Module):
         # input embedding stem
         self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
         # self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))
-        self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size + 1, config.n_embd))
+        self.pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep + 1, config.n_embd))
         self.global_pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep+1, config.n_embd))
         self.drop = nn.Dropout(config.embd_pdrop)
 
@@ -287,5 +287,8 @@ class GPT(nn.Module):
         loss = None
         if targets is not None:
             loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
+        else:
+            pass
 
         return logits, loss
+

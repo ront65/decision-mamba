@@ -95,7 +95,7 @@ class CustomFrameStack(FrameStack):
         return self.observation(None), info # We use [:] on the observation to return the obervation value, and not the lazy-frame object
     
 @torch.no_grad()
-def sample_rec(model, x, steps, temperature=1.0, sample=False, top_k=None, actions=None, rtgs=None, timesteps=None):
+def sample_rec(model, x, steps, temperature=1.0, sample=False, top_k=None, actions=None, rtgs=None, timesteps=None, model_states=None):
     """
     take a conditioning sequence of indices in x (of shape (b,t)) and predict the next token in
     the sequence, feeding the predictions back into the model each time. Clearly the sampling
@@ -127,4 +127,4 @@ def sample_rec(model, x, steps, temperature=1.0, sample=False, top_k=None, actio
         # x = torch.cat((x, ix), dim=1)
         x = ix
 
-    return x
+    return x, new_model_states
