@@ -267,11 +267,13 @@ class GPT(nn.Module):
             raise NotImplementedError()
 
         batch_size = states.shape[0]
-        all_global_pos_emb = torch.repeat_interleave(self.global_pos_emb, batch_size, dim=0) # batch_size, traj_length, n_embd
 
-        position_embeddings = torch.gather(all_global_pos_emb, 1, torch.repeat_interleave(timesteps, self.config.n_embd, dim=-1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
-
-        x = self.drop(token_embeddings + position_embeddings)
+        if self.model_type != "recc":
+            all_global_pos_emb = torch.repeat_interleave(self.global_pos_emb, batch_size, dim=0) # batch_size, traj_length, n_embd
+            position_embeddings = torch.gather(all_global_pos_emb, 1, torch.repeat_interleave(timesteps, self.config.n_embd, dim=-1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
+            x = self.drop(token_embeddings + position_embeddings)
+        else:
+            x = self.drop(token_embeddings)
         x = self.blocks(x)
 #        x = self.ln_f(x)
         logits = self.head(x)
@@ -329,13 +331,12 @@ class GPT(nn.Module):
             raise NotImplementedError()
 
         batch_size = states.shape[0]
-        all_global_pos_emb = torch.repeat_interleave(self.global_pos_emb, batch_size,
-                                                     dim=0)  # batch_size, traj_length, n_embd
-
-        position_embeddings = torch.gather(all_global_pos_emb, 1, torch.repeat_interleave(timesteps, self.config.n_embd, dim=-1))\
-                              + self.pos_emb[:, :token_embeddings.shape[1], :]
-
-        x = self.drop(token_embeddings + position_embeddings)
+        if self.model_type != "recc":
+            all_global_pos_emb = torch.repeat_interleave(self.global_pos_emb, batch_size, dim=0)  # batch_size, traj_length, n_embd
+            position_embeddings = torch.gather(all_global_pos_emb, 1, torch.repeat_interleave(timesteps, self.config.n_embd, dim=-1))+ self.pos_emb[:, :token_embeddings.shape[1], :]
+            x = self.drop(token_embeddings + position_embeddings)
+        else:
+            x = self.drop(token_embeddings)
         zz = torch.zeros_like(x)
         new_mamba_states = mamba_states
         for jj in range(zz.shape[1]):
