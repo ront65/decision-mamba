@@ -27,8 +27,10 @@ from torch.nn import functional as F
 logger = logging.getLogger(__name__)
 
 import numpy as np
-
-from mingpt.mamba_mixer import MixerModel
+if __name__=="__main__":
+    from mingpt.mamba_mixer import MixerModel
+else:
+    from mamba_mixer import MixerModel
 
 class GELU(nn.Module):
     def forward(self, input):
@@ -345,28 +347,28 @@ class GPT(nn.Module):
         x = zz
         #        x = self.ln_f(x)
         logits = self.head(x)
-        #logits = logits[:, -1, :]
+        logits = logits[:, -1, :].reshape(1,1,-1)
 
         return logits, new_mamba_states
 
 if __name__=="__main__":
-    vocab_size = 3
+    vocab_size = 4
     mconf = GPTConfig(vocab_size, -1, n_layer=2, n_head=8, n_embd=128,
                       model_type='reward_conditioned', max_timestep=5, block_type="recc")
-    model = GPT(mconf).to("cuda")
+    model = GPT(mconf).to(torch.device("cuda"))
     model.eval()
     L = 10
-    inpst = torch.randn(1, L, 4*84*84)
-    inpac = torch.randint(0, vocab_size-1, (1, L - 1, 1)).type(torch.long)
-    inprt = torch.randn(1, L, 1)
-    y1 = model(inpst, inpac, targets=None, rtgs=inprt)
+    inpst = torch.randn(1, L, 4*84*84).to(dtype=torch.float32, device=torch.device("cuda"))
+    inpac = torch.randint(0, vocab_size-1, (1, L - 1, 1)).to(dtype=torch.long, device=torch.device("cuda"))
+    inprt = torch.randn(1, L, 1).to(dtype=torch.float32, device=torch.device("cuda"))
+    y1, _ = model(inpst, inpac, targets=None, rtgs=inprt)
     print(f"y1 size: {y1.shape}")
     y2 = []
 
     curr_states = model.get_model_init_state(1)
     for x in range(L):
         a_in = inpac[:, x-1, :].reshape(1, 1, 1) if x > 0 else None
-        outp, curr_states = model.step(inpst[:, x, :].reshape(1, 1, -1), a_in, targets=None, rtgs=inpst[:, x, :].reshape(1, 1, -1), mamba_states=curr_states)
+        outp, curr_states = model.step(inpst[:, x, :].reshape(1, 1, -1), a_in, targets=None, rtgs=inprt[:, x, :].reshape(1, 1, -1), mamba_states=curr_states)
         y2.append(outp)
     print(f"sub y2 size: {y2[0].shape}")
     y2 = torch.cat(y2, dim=1)
@@ -374,6 +376,5 @@ if __name__=="__main__":
     dy = (y2-y1).abs()
 
     print(f"L1 Mean Err: {dy.sum(dim=-1).mean()}")
-    print(f"LI Mean Err: {dy.max(dim=-1).mean()}")
-    print(f"L1 Max Err: {dy.max(dim=-1).mean()}")
+    print(f"Mean Err: {dy.mean()}")
     print(f"LI Max Err: {dy.max()}")
