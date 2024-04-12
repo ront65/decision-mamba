@@ -95,7 +95,7 @@ class CustomFrameStack(FrameStack):
         return self.observation(None), info # We use [:] on the observation to return the obervation value, and not the lazy-frame object
     
 @torch.no_grad()
-def sample_rec(model, x, steps, temperature=1.0, sample=False, top_k=None, actions=None, rtgs=None, timesteps=None, model_states=None):
+def sample_rec(model, x, steps, temperature=1.0, sample=False, top_k=None, actions=None, rtgs=None, timesteps=None, mamba_states=None):
     """
     take a conditioning sequence of indices in x (of shape (b,t)) and predict the next token in
     the sequence, feeding the predictions back into the model each time. Clearly the sampling
@@ -106,11 +106,11 @@ def sample_rec(model, x, steps, temperature=1.0, sample=False, top_k=None, actio
     model.eval()
     for k in range(steps):
         # x_cond = x if x.size(1) <= block_size else x[:, -block_size:] # crop context if needed
-        x_cond = x if x.size(1) <= block_size//3 else x[:, -block_size//3:] # crop context if needed
+        x_cond = x[:,-1,:].reshape(1,1,-1)
         if actions is not None:
-            actions = actions if actions.size(1) <= block_size//3 else actions[:, -block_size//3:] # crop context if needed
-        rtgs = rtgs if rtgs.size(1) <= block_size//3 else rtgs[:, -block_size//3:] # crop context if needed
-        logits, _ = model(x_cond, actions=actions, targets=None, rtgs=rtgs, timesteps=timesteps)
+            actions = actions[:,-1,:].reshape(1,1,1)
+        rtgs = rtgs[:,-1,:].reshape(1,1,1)
+        logits, new_model_states = model(x_cond, actions=actions, targets=None, rtgs=rtgs, timesteps=timesteps, mamba_states=mamba_states)
         # pluck the logits at the final step and scale by temperature
         logits = logits[:, -1, :] / temperature
         # optionally crop probabilities to only the top k options

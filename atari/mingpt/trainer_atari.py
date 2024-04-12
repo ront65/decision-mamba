@@ -388,6 +388,9 @@ class TrainerRec:
                 reward_sum += reward
                 j += 1
 
+                if j > 7000:
+                    done = True
+                    print("Cutoff for inference run of length 7000")
                 if done:
                     T_rewards.append(reward_sum)
                     break
