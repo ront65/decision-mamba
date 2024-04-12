@@ -76,7 +76,11 @@ class StateActionReturnDataset_AllTraj(Dataset):
         self.done_idxs = done_idxs
         self.rtgs = rtgs
         self.timesteps = timesteps
-        print(f"Dataset size: {len(self.available_idx)}, maxsize: {self.max_block_size}")
+
+        #self.jumper = int(len(self.data) / self.available_idx) - 1
+        print(f"real Dataset size: {len(self.available_idx)}, maxsize: {self.max_block_size}")
+        print(f"Regular Dataset size: {len(self.data) - block_size}")
+        #print(f"altered Dataset size: {len(self.available_idx) }, maxsize: {self.max_block_size}")
 
     def __len__(self):
         return len(self.available_idx)
