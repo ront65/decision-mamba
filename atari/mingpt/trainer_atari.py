@@ -287,7 +287,7 @@ class TrainerRec:
 
                     # decay the learning rate based on our progress
                     if config.lr_decay:
-                        self.tokens += (y >= 0).sum()  # number of tokens processed this step (i.e. label is not -100)
+                        self.tokens += (m > 0).sum()  # number of tokens processed this step (i.e. label is not -100)
                         if self.tokens < config.warmup_tokens:
                             # linear warmup
                             lr_mult = float(self.tokens) / float(max(1, config.warmup_tokens))
