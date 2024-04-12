@@ -110,7 +110,7 @@ def sample_rec(model, x, steps, temperature=1.0, sample=False, top_k=None, actio
         if actions is not None:
             actions = actions[:,-1,:].reshape(1,1,1)
         rtgs = rtgs[:,-1,:].reshape(1,1,1)
-        logits, new_model_states = model(x_cond, actions=actions, targets=None, rtgs=rtgs, timesteps=timesteps, mamba_states=mamba_states)
+        logits, new_model_states = model.step(x_cond, actions=actions, targets=None, rtgs=rtgs, timesteps=timesteps, mamba_states=mamba_states)
         # pluck the logits at the final step and scale by temperature
         logits = logits[:, -1, :] / temperature
         # optionally crop probabilities to only the top k options

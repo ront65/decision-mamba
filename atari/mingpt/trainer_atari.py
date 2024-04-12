@@ -25,6 +25,7 @@ from torch.utils.data.dataloader import DataLoader
 logger = logging.getLogger(__name__)
 
 from mingpt.utils import sample, sample_rec, CustomFrameStack
+from torch.nn import functional as F
 #import atari_py
 from collections import deque
 import random
@@ -285,7 +286,13 @@ class TrainerRec:
                 # forward the model
                 with torch.set_grad_enabled(is_train):
                     # logits, loss = model(x, y, r)
-                    logits, loss = model(x, y, y, r, t)
+                    logits, _ = model(x, y, y, r, t)
+
+                    new_m = m.reshape(-1)
+                    new_y = y.reshape(-1)[new_m == 1]
+                    new_logits = logits.reshape(-1, logits.size(-1))[new_m == 1]
+                    loss = F.cross_entropy(new_logits, new_y)
+
                     loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
                     losses.append(loss.item())
 
@@ -374,7 +381,7 @@ class TrainerRec:
             sampled_action, mamba_states = sample_rec(self.model.module, state, 1, temperature=1.0, sample=True, actions=None,
                                     rtgs=torch.tensor(rtgs, dtype=torch.long).to(self.device).unsqueeze(0).unsqueeze(
                                         -1),
-                                    timesteps=torch.zeros((1, 1, 1), dtype=torch.int64).to(self.device), model_states=mamba_states)
+                                    timesteps=torch.zeros((1, 1, 1), dtype=torch.int64).to(self.device), mamba_states=mamba_states)
 
             j = 0
             all_states = state
@@ -388,7 +395,7 @@ class TrainerRec:
                 reward_sum += reward
                 j += 1
 
-                if j > 7000:
+                if j > 5000:
                     done = True
                     print("Cutoff for inference run of length 7000")
                 if done:
@@ -409,7 +416,7 @@ class TrainerRec:
                                             0).unsqueeze(-1),
                                         timesteps=(min(j, self.config.max_timestep) * torch.ones((1, 1, 1),
                                                                                                  dtype=torch.int64).to(
-                                            self.device)), model_states=mamba_states)
+                                            self.device)), mamba_states=mamba_states)
         env.close()
         eval_return = sum(T_rewards) / 10.
         print(f"Rewards given: {T_rewards}")

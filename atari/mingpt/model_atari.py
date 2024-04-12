@@ -268,7 +268,7 @@ class GPT(nn.Module):
 
         batch_size = states.shape[0]
 
-        if self.model_type != "recc":
+        if self.config.block_type != "recc":
             all_global_pos_emb = torch.repeat_interleave(self.global_pos_emb, batch_size, dim=0) # batch_size, traj_length, n_embd
             position_embeddings = torch.gather(all_global_pos_emb, 1, torch.repeat_interleave(timesteps, self.config.n_embd, dim=-1)) + self.pos_emb[:, :token_embeddings.shape[1], :]
             x = self.drop(token_embeddings + position_embeddings)
@@ -291,7 +291,7 @@ class GPT(nn.Module):
 
         # if we are given some desired targets also calculate the loss
         loss = None
-        if targets is not None:
+        if targets is not None and self.config.block_type != "recc":
             loss = F.cross_entropy(logits.reshape(-1, logits.size(-1)), targets.reshape(-1))
         else:
             pass
@@ -331,7 +331,7 @@ class GPT(nn.Module):
             raise NotImplementedError()
 
         batch_size = states.shape[0]
-        if self.model_type != "recc":
+        if self.config.block_type != "recc":
             all_global_pos_emb = torch.repeat_interleave(self.global_pos_emb, batch_size, dim=0)  # batch_size, traj_length, n_embd
             position_embeddings = torch.gather(all_global_pos_emb, 1, torch.repeat_interleave(timesteps, self.config.n_embd, dim=-1))+ self.pos_emb[:, :token_embeddings.shape[1], :]
             x = self.drop(token_embeddings + position_embeddings)
@@ -345,7 +345,7 @@ class GPT(nn.Module):
         x = zz
         #        x = self.ln_f(x)
         logits = self.head(x)
-        logits = logits[:, -1, :]
+        #logits = logits[:, -1, :]
 
         return logits, new_mamba_states
 
