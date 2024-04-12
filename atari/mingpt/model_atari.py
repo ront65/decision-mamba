@@ -136,7 +136,7 @@ class GPT(nn.Module):
         self.drop = nn.Dropout(config.embd_pdrop)
 
         # transformer
-        assert config.block_type in ['transformer', 'mamba'], "argument block type must be either 'transformer' or 'mamba' "
+        assert config.block_type in ['transformer', 'mamba', 'recc'], "argument block type must be either 'transformer' or 'mamba' "
         if config.block_type == "transformer":
             self.blocks = nn.Sequential(*(
                 [Block(config) for _ in range(config.n_layer)] + [nn.LayerNorm(config.n_embd)]
