@@ -120,3 +120,32 @@ class MixerModel(nn.Module):
                 residual_in_fp32=self.residual_in_fp32,
             )
         return hidden_states
+
+    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+        return [lay.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs) for lay in self.layers]
+
+    def step(self, input_data, mamba_states):
+        hidden_states = input_data
+        residual = None
+        new_mamba_states = []
+        for i_lay, layer in enumerate(self.layers):
+            hidden_states, residual, st1, st2 = layer.step(
+                hidden_states, mamba_states[i_lay], residual
+            )
+            new_mamba_states.append([st1, st2])
+        if not self.fused_add_norm:
+            residual = (hidden_states + residual) if residual is not None else hidden_states
+            hidden_states = self.norm_f(residual.to(dtype=self.norm_f.weight.dtype))
+        else:
+            # Set prenorm=False here since we don't need the residual
+            fused_add_norm_fn = rms_norm_fn if isinstance(self.norm_f, RMSNorm) else layer_norm_fn
+            hidden_states = fused_add_norm_fn(
+                hidden_states,
+                self.norm_f.weight,
+                self.norm_f.bias,
+                eps=self.norm_f.eps,
+                residual=residual,
+                prenorm=False,
+                residual_in_fp32=self.residual_in_fp32,
+            )
+        return hidden_states, new_mamba_states
