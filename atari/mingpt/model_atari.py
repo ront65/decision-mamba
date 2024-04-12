@@ -27,7 +27,7 @@ from torch.nn import functional as F
 logger = logging.getLogger(__name__)
 
 import numpy as np
-if __name__=="__main__":
+if __name__!="__main__":
     from mingpt.mamba_mixer import MixerModel
 else:
     from mamba_mixer import MixerModel
