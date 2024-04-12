@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=123)
 parser.add_argument('--context_length', type=int, default=30)
 parser.add_argument('--epochs', type=int, default=5)
+parser.add_argument('--jumper', type=int, default=1)
 parser.add_argument('--model_type', type=str, default='reward_conditioned')
 parser.add_argument('--num_steps', type=int, default=500000)
 parser.add_argument('--num_buffers', type=int, default=50)
@@ -64,7 +65,7 @@ class StateActionReturnDataset(Dataset):
 
 class StateActionReturnDataset_AllTraj(Dataset):
 
-    def __init__(self, data, block_size, actions, done_idxs, rtgs, timesteps, jumper=10):
+    def __init__(self, data, block_size, actions, done_idxs, rtgs, timesteps, jumper=1):
         self.available_idx = np.zeros(done_idxs.shape, dtype=done_idxs.dtype)
         self.available_idx[1:] = np.array(done_idxs[:-1])
         self.available_idx[0] = 0
@@ -176,11 +177,11 @@ logging.basicConfig(
         level=logging.INFO,
         stream=sys.stdout,
 )
-jumper=20
+
 if args.block_type != "recc":
     train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps)
 else:
-    train_dataset = StateActionReturnDataset_AllTraj(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps, jumper)
+    train_dataset = StateActionReturnDataset_AllTraj(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps, 1)
 
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
                   n_layer = args.num_layers, n_head=8, n_embd=128, 
@@ -201,7 +202,8 @@ if args.block_type != "recc":
     trainer = Trainer(model, train_dataset, None, tconf)
 else:
     tconf.warmup_tokens = train_dataset.total_trainable_points
-    tconf.final_tokens = int(train_dataset.total_trainable_points * jumper * epochs * 0.8)
+    tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * 0.8)
+    tconf.jumper = args.jumper
     trainer = TrainerRec(model, train_dataset, None, tconf)
 
 trainer.train()
