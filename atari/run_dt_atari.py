@@ -76,6 +76,7 @@ class StateActionReturnDataset_AllTraj(Dataset):
         self.done_idxs = done_idxs
         self.rtgs = rtgs
         self.timesteps = timesteps
+        print(f"Dataset size: {len(self.available_idx)}, maxsize: {self.max_block_size}")
 
     def __len__(self):
         return len(self.available_idx)
