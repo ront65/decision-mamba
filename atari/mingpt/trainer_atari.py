@@ -328,6 +328,8 @@ class TrainerRec:
             #     best_loss = test_loss
             #     self.save_checkpoint()
 
+            if epoch % self.config.jumper != 0 and epoch+1 != config.max_epochs:
+                continue
             # -- pass in target returns
             if self.config.model_type == 'naive':
                 eval_return = self.get_returns(0)
