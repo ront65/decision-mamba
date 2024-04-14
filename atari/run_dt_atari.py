@@ -24,6 +24,7 @@ parser.add_argument('--num_steps', type=int, default=500000)
 parser.add_argument('--num_buffers', type=int, default=50)
 parser.add_argument('--game', type=str, default='Breakout')
 parser.add_argument('--batch_size', type=int, default=128)
+parser.add_argument('--batch_accum', type=int, default=1)
 parser.add_argument('--num_layers', type=int, default=6)
 parser.add_argument('--block_type', type=str, default='transformer')
 # 
@@ -130,7 +131,7 @@ print(f'num params: {num_params} ; num params that require grad: {num_params_req
 
 # initialize a trainer instance and kick off training
 epochs = args.epochs
-tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, learning_rate=6e-4,
+tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, batch_accum=args.batch_accum, learning_rate=6e-4,
                       lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(train_dataset)*args.context_length*3,
                       num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps))
 if args.block_type != "recc":
