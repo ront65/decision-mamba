@@ -25,7 +25,7 @@ parser.add_argument('--num_buffers', type=int, default=50)
 parser.add_argument('--game', type=str, default='Breakout')
 parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--batch_accum', type=int, default=1)
-parser.add_argument('--dropout', type=int, default=0.1)
+parser.add_argument('--dropout', type=float, default=0.1)
 parser.add_argument('--num_layers', type=int, default=6)
 parser.add_argument('--block_type', type=str, default='transformer')
 # 
