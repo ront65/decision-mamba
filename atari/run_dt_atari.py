@@ -18,7 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=123)
 parser.add_argument('--context_length', type=int, default=30)
 parser.add_argument('--epochs', type=int, default=5)
-parser.add_argument('--jumper', type=int, default=1)
+parser.add_argument('--jumper', type=int, default=30)
 parser.add_argument('--model_type', type=str, default='reward_conditioned')
 parser.add_argument('--num_steps', type=int, default=500000)
 parser.add_argument('--num_buffers', type=int, default=50)
@@ -101,71 +101,6 @@ class StateActionReturnDataset_AllTraj(Dataset):
         timesteps = torch.tensor(self.timesteps[idx:done_idx], dtype=torch.int64).unsqueeze(1)
         out = [states, actions, rtgs, torch.ones(rtgs.shape), timesteps]
         out2 = [torch.cat([r, torch.zeros((self.max_block_size-block_size,r.shape[1]), dtype=r.dtype)], dim=0) for r in out]
-        return out2
-
-class StateActionReturnDataset_AllTraj2(Dataset):
-    def __init__(self, data, actions, done_idxs, rtgs, timesteps, skipper, max_size=None):
-        self.available_idx = np.zeros(done_idxs.shape, dtype=done_idxs.dtype)
-        self.available_idx[1:] = np.array(done_idxs[:-1])
-        self.available_idx[0] = 0
-        self.block_size = int(np.max(done_idxs-self.available_idx))
-        self.real_block_size = self.block_size
-        if max_size is not None:
-            self.block_size = min(max_size, self.block_size)
-            print(f"Dataset_TotalTraj max_size of dataset {self.block_size}")
-        print(f"Dataset_TotalTraj Min length dataset {int(np.min(done_idxs - self.available_idx))}")
-        print(f"Dataset_TotalTraj Max length dataset {int(np.max(done_idxs - self.available_idx))}")
-        self.vocab_size = max(actions) + 1
-        self.skipper = skipper
-        self.data = data
-        self.actions = actions
-        self.done_idxs = done_idxs
-        self.rtgs = rtgs
-        self.timesteps = timesteps
-        self.max_size = max_size
-
-    def set_mode(self, max_size):
-        if max_size == 0:
-            self.max_size = None
-            self.block_size = self.real_block_size
-        else:
-            self.max_size = max_size
-            self.block_size = min(max_size, self.real_block_size)
-        return
-
-    def __len__(self):
-        return len(self.data) // self.skipper
-
-    def __getitem__(self, idx):
-        idx = idx * self.skipper
-        #idx = idx + int(np.any(idx == self.done_idxs))
-        j = 0
-        for i in self.done_idxs:
-            if i > idx: # first done_idx greater than idx
-                #done_idx = int(i)
-                if i - idx <= 5*self.skipper:
-                    done_idx = i
-                elif idx-j<=100:
-                    done_idx = min(j + 100, i)
-                else:
-                    done_idx = idx
-                break
-            j = i
-        idx = j
-        block_size = done_idx - idx
-        if self.max_size is not None:
-            block_size = min(block_size, self.block_size)
-            done_idx = idx + block_size
-
-        states = torch.tensor(np.array(self.data[idx:done_idx]), dtype=torch.float32).reshape(block_size,
-                                                                                              -1)  # (block_size, 4*84*84)
-        states = states / 255.
-        actions = torch.tensor(self.actions[idx:done_idx], dtype=torch.long).unsqueeze(1)  # (block_size, 1)
-        rtgs = torch.tensor(self.rtgs[idx:done_idx], dtype=torch.float32).unsqueeze(1)
-        timesteps = torch.tensor(self.timesteps[idx:done_idx], dtype=torch.int64).unsqueeze(1)
-        out = [states, actions, rtgs, torch.ones(rtgs.shape), timesteps]
-        out2 = [torch.cat([r, torch.zeros((self.block_size-block_size,r.shape[1]), dtype=r.dtype)], dim=0) for r in out]
-        #print(f"DEBUGDATASET {out2[0].shape} X {out2[1].shape} X {out2[2].shape} X {out2[3].shape} X {out2[4].shape} X")
         return out2
 
 obss, actions, returns, done_idxs, rtgs, timesteps = create_dataset(args.num_buffers, args.num_steps, args.game, args.data_dir_prefix, args.trajectories_per_buffer)

@@ -389,7 +389,13 @@ class TrainerRec:
 
                 all_states = torch.cat([all_states, state], dim=0)
 
-                rtgs += [rtgs[-1] - reward]
+                if reward > 0:
+                    sub_reward = 1
+                elif reward == 0:
+                    sub_reward = 0
+                else:
+                    sub_reward = -1
+                rtgs += [rtgs[-1] - sub_reward]
                 # all_states has all previous states and rtgs has all previous rtgs (will be cut to block_size in utils.sample)
                 # timestep is just current timestep
                 sampled_action, mamba_states = sample_rec(self.model.module, all_states.unsqueeze(0), 1, temperature=1.0, sample=True,
