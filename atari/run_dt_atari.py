@@ -25,6 +25,7 @@ parser.add_argument('--num_buffers', type=int, default=50)
 parser.add_argument('--game', type=str, default='Breakout')
 parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--batch_accum', type=int, default=1)
+parser.add_argument('--dropout', type=int, default=0.1)
 parser.add_argument('--num_layers', type=int, default=6)
 parser.add_argument('--block_type', type=str, default='transformer')
 # 
@@ -121,7 +122,8 @@ else:
 
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
                   n_layer = args.num_layers, n_head=8, n_embd=128, 
-                  model_type=args.model_type, max_timestep=max(timesteps), block_type=args.block_type)
+                  model_type=args.model_type, max_timestep=max(timesteps), block_type=args.block_type,
+                  embd_pdrop=args.dropout)
 model = GPT(mconf)
 
 # initialize a trainer instance and kick off training
