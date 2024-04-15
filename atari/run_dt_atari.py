@@ -75,7 +75,12 @@ train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, d
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
                   n_layer = args.num_layers, n_head=8, n_embd=128, 
                   model_type=args.model_type, max_timestep=max(timesteps), block_type=args.block_type)
+
 model = GPT(mconf)
+
+num_params_require_grad = sum(p.numel() for p in model.parameters() if p.requires_grad)
+num_params = sum(p.numel() for p in model.parameters())
+print(f'num params: {num_params} ; num params that require grad: {num_params_require_grad}')
 
 # initialize a trainer instance and kick off training
 epochs = args.epochs

@@ -77,13 +77,26 @@ class Trainer:
         raw_model = model.module if hasattr(self.model, "module") else model
         optimizer = raw_model.configure_optimizers(config)
 
+        def seed_worker(worker_id):
+            worker_seed = torch.initial_seed() % 2**32
+            np.random.seed(worker_seed)
+            random.seed(worker_seed) 
+
+
         def run_epoch(split, epoch_num=0):
             is_train = split == 'train'
             model.train(is_train)
             data = self.train_dataset if is_train else self.test_dataset
-            loader = DataLoader(data, shuffle=True, pin_memory=True,
-                                batch_size=config.batch_size,
-                                num_workers=config.num_workers)
+
+            g = torch.Generator()
+            g.manual_seed(0)
+            loader = DataLoader(
+                data, shuffle=True, pin_memory=True,
+                batch_size=config.batch_size,
+                num_workers=config.num_workers,
+                worker_init_fn=seed_worker,
+                generator=g,
+            )
 
             losses = []
             pbar = tqdm(enumerate(loader), total=len(loader)) if is_train else enumerate(loader)
