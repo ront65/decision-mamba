@@ -15,6 +15,9 @@ from torch.nn import functional as F
 import os
 import tensorflow as tf
 
+import gymnasium as gym
+from gymnasium.wrappers.frame_stack import FrameStack
+
 def set_seed(seed):
     random.seed(seed)
     np.random.seed(seed)
@@ -70,3 +73,23 @@ def sample(model, x, steps, temperature=1.0, sample=False, top_k=None, actions=N
         x = ix
 
     return x
+
+class CustomFrameStack(FrameStack):
+    def __init__(self,env: gym.Env,num_stack: int,):
+        FrameStack.__init__(self, env, num_stack)
+
+    def reset(self, **kwargs):
+        """Reset the environment with kwargs.
+
+        Args:
+            **kwargs: The kwargs for the environment reset
+
+        Returns:
+            The stacked observations
+        """
+        obs, info = self.env.reset(**kwargs)
+        obs_zeros = np.zeros_like(obs)
+        [self.frames.append(obs_zeros) for _ in range(self.num_stack - 1)]
+        self.frames.append(obs)
+
+        return self.observation(None), info # We use [:] on the observation to return the obervation value, and not the lazy-frame object
