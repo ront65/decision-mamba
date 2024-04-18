@@ -284,7 +284,7 @@ class TrainerRec:
                 t = t.to(self.device)
 
                 if config.train_dropout > 0:
-                    mp = (torch.rand_like(m) < config.train_dropout).to(dtype=m.dtype)
+                    mp = torch.rand_like(m) < config.train_dropout
                     m = m * mp
                 # forward the model
                 with torch.set_grad_enabled(is_train):
@@ -292,8 +292,8 @@ class TrainerRec:
                     logits, _ = model(x, y, y, r, t)
 
                     new_m = m.reshape(-1)
-                    new_y = y.reshape(-1)[new_m > 1]
-                    new_logits = logits.reshape(-1, logits.size(-1))[new_m > 1]
+                    new_y = y.reshape(-1)[new_m > 0]
+                    new_logits = logits.reshape(-1, logits.size(-1))[new_m > 0]
                     loss = F.cross_entropy(new_logits, new_y)
 
                     loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus

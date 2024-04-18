@@ -7,7 +7,37 @@ import torch.nn as nn
 from functools import partial
 
 
+class ReccBlock(Block):
+    def step(
+        self, hidden_states, mamba_states, residual=None,
+    ):
+        r"""Pass the input through the encoder layer.
 
+        Args:
+            hidden_states: the sequence to the encoder layer (required).
+            residual: hidden_states = Mixer(LN(residual))
+        """
+        if not self.fused_add_norm:
+            residual = (hidden_states + residual) if residual is not None else hidden_states
+            hidden_states = self.norm(residual.to(dtype=self.norm.weight.dtype))
+            if self.residual_in_fp32:
+                residual = residual.to(torch.float32)
+        else:
+            fused_add_norm_fn = rms_norm_fn if isinstance(self.norm, RMSNorm) else layer_norm_fn
+            hidden_states, residual = fused_add_norm_fn(
+                hidden_states,
+                self.norm.weight,
+                self.norm.bias,
+                residual=residual,
+                prenorm=True,
+                residual_in_fp32=self.residual_in_fp32,
+                eps=self.norm.eps,
+            )
+        hidden_states, new_conv_state, new_ssm_state = self.mixer.step(hidden_states, *mamba_states)
+        return hidden_states, residual, new_conv_state, new_ssm_state
+
+    def allocate_inference_cache(self, batch_size, max_seqlen, dtype=None, **kwargs):
+        return self.mixer.allocate_inference_cache(batch_size, max_seqlen, dtype=dtype, **kwargs)
 
 def create_block(
     d_model,
@@ -25,7 +55,7 @@ def create_block(
     norm_cls = partial(
         nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon,# **factory_kwargs
     )
-    block = Block(
+    block = ReccBlock(
         d_model,
         mixer_cls,
         norm_cls=norm_cls,
