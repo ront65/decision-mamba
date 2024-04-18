@@ -283,14 +283,17 @@ class TrainerRec:
                 m = m.to(self.device)
                 t = t.to(self.device)
 
+                if config.train_dropout > 0:
+                    mp = (torch.rand_like(m) < config.train_dropout).to(dtype=m.dtype)
+                    m = m * mp
                 # forward the model
                 with torch.set_grad_enabled(is_train):
                     # logits, loss = model(x, y, r)
                     logits, _ = model(x, y, y, r, t)
 
                     new_m = m.reshape(-1)
-                    new_y = y.reshape(-1)[new_m == 1]
-                    new_logits = logits.reshape(-1, logits.size(-1))[new_m == 1]
+                    new_y = y.reshape(-1)[new_m > 1]
+                    new_logits = logits.reshape(-1, logits.size(-1))[new_m > 1]
                     loss = F.cross_entropy(new_logits, new_y)
 
                     loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
@@ -360,7 +363,8 @@ class TrainerRec:
                 elif self.config.game == 'Seaquest':
                     eval_return = self.get_returns(1150)
                 elif self.config.game == 'Qbert':
-                    eval_return = self.get_returns(14000)
+                    eval_return = self.get_returns(14000, real_rewards=True)
+                    eval_return = self.get_returns(500)
                 elif self.config.game == 'Pong':
                     eval_return = self.get_returns(20)
                 else:
@@ -368,7 +372,7 @@ class TrainerRec:
             else:
                 raise NotImplementedError()
 
-    def get_returns(self, ret):
+    def get_returns(self, ret, real_rewards=False):
         self.model.train(False)
         args = Args(self.config.game.lower(), self.config.seed)
         env = Env(args)
@@ -416,6 +420,8 @@ class TrainerRec:
                     sub_reward = 0
                 else:
                     sub_reward = -1
+                if real_rewards:
+                    sub_reward = reward
                 rtgs += [rtgs[-1] - sub_reward]
                 # all_states has all previous states and rtgs has all previous rtgs (will be cut to block_size in utils.sample)
                 # timestep is just current timestep
