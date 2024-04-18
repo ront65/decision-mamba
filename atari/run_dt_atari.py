@@ -18,6 +18,7 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=123)
 parser.add_argument('--context_length', type=int, default=30)
 parser.add_argument('--epochs', type=int, default=5)
+parser.add_argument('--test_evals', type=int, default=10)
 parser.add_argument('--jumper', type=int, default=30)
 parser.add_argument('--model_type', type=str, default='reward_conditioned')
 parser.add_argument('--num_steps', type=int, default=500000)
@@ -136,7 +137,7 @@ epochs = args.epochs
 tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, batch_accum=args.batch_accum, learning_rate=6e-4,
                       lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(train_dataset)*args.context_length*3,
                       num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps),
-                      train_dropout=args.train_dropout)
+                      train_dropout=args.train_dropout, test_evals=args.test_evals)
 if args.block_type != "recc":
     trainer = Trainer(model, train_dataset, None, tconf)
 else:

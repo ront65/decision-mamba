@@ -374,14 +374,14 @@ class TrainerRec:
 
     def get_returns(self, ret, real_rewards=False):
         self.model.train(False)
-        args = Args(self.config.game.lower(), self.config.seed)
-        env = Env(args)
-        env.eval()
+        env = gym.make(f"ALE/{self.config.game}-v5", repeat_action_probability = 0, frameskip=1, max_episode_steps=108e3)
+        env = CustomFrameStack(AtariPreprocessing(env, scale_obs=True), num_stack=4)
 
         T_rewards, T_Qs = [], []
         done = True
-        for i in range(10):
-            state = env.reset()
+        for i in range(self.config.test_evals):
+            state = env.reset(seed = self.config.seed + i)[0]
+            state = torch.from_numpy(np.array(state))
             state = state.type(torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
             mamba_states = self.model.module.get_model_init_state(1)
             rtgs = [ret]
@@ -396,10 +396,13 @@ class TrainerRec:
             actions = []
             while True:
                 if done:
-                    state, reward_sum, done = env.reset(), 0, False
-                action = sampled_action.cpu().numpy()[0, -1]
+                    state, reward_sum, done = env.reset(seed = self.config.seed + i)[0], 0, False
+                    state = torch.from_numpy(np.array(state))
+                action = sampled_action.cpu().numpy()[0,-1]
                 actions += [sampled_action]
-                state, reward, done = env.step(action)
+                state, reward, terminated, truncated, info = env.step(action)
+                state = torch.from_numpy(np.array(state)) # state is a LazyFrame object, we need to trandform it into numpy onject.
+                done = terminated or truncated
                 reward_sum += reward
                 j += 1
 
@@ -434,7 +437,7 @@ class TrainerRec:
                                                                                                  dtype=torch.int64).to(
                                             self.device)), mamba_states=mamba_states)
         env.close()
-        eval_return = sum(T_rewards) / 10.
+        eval_return = sum(T_rewards) * 1.0 / self.config.test_evals
         print(f"Rewards given: {T_rewards}")
         print("Mean target return: %d, eval return: %d" % (ret, eval_return))
         self.model.train(True)
