@@ -198,6 +198,9 @@ class Trainer:
                 reward_sum += reward
                 j += 1
 
+                if j > 1e4:
+                    done = True
+                
                 if done:
                     T_rewards.append(reward_sum)
                     break
