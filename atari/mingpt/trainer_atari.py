@@ -24,7 +24,7 @@ from torch.utils.data.dataloader import DataLoader
 
 logger = logging.getLogger(__name__)
 
-from mingpt.utils import sample, sample_rec, sample_rec_enc CustomFrameStack
+from mingpt.utils import sample, sample_rec, sample_rec_enc, CustomFrameStack
 from torch.nn import functional as F
 #import atari_py
 from collections import deque
@@ -363,7 +363,7 @@ class TrainerRec:
                     eval_return = self.get_returns(90)
                 elif self.config.game == 'Seaquest':
                     eval_return = self.get_returns(1150, real_rewards=True)
-                    eval_return = self.get_returns(300)
+                    eval_return = self.get_returns(260)
                 elif self.config.game == 'Qbert':
                     eval_return = self.get_returns(14000, real_rewards=True)
                     eval_return = self.get_returns(500)
@@ -507,7 +507,7 @@ class TrainerRecEnc:
 
                     new_logits = logits.reshape(-1, logits.size(-1))[new_m > 0]
                     loss1 = F.cross_entropy(new_logits, new_y)
-                    loss2 = ((rtg_exp - r) ** 2)[new_m > 0].mean()
+                    loss2 = ((rtg_exp - r) ** 2)[m > 0].mean()
                     loss = loss1 + loss2
 
                     loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
@@ -620,7 +620,7 @@ class TrainerRecEnc:
             j = 0
             all_states = state
             actions = []
-            reward_sum, done = [], False
+            reward_sum, done = 0, False
             while True:
                 if done:
                     #state, reward_sum, done = env.reset(seed = self.config.seed + i)[0], 0, False

@@ -97,7 +97,7 @@ class StateActionReturnDataset_AllTraj(Dataset):
         states, actions, rtgs, masks, rewards = [], [], [], [], []
         for j in range(k):
             items = self.__getitem__(self.idx_by_rewards[j])
-            i_states, i_actions, i_rtgs, i_masks, i_rewards = [x.unqueeze(0) for x in items]
+            i_states, i_actions, i_rtgs, i_masks, i_rewards = [x.unsqueeze(0) for x in items]
             states.append(i_states)
             actions.append(i_actions)
             rtgs.append(i_rtgs)
@@ -123,7 +123,7 @@ class StateActionReturnDataset_AllTraj(Dataset):
         out2 = [torch.cat([r, torch.zeros((self.max_block_size-block_size,r.shape[1]), dtype=r.dtype)], dim=0) for r in out]
         return out2
 
-obss, actions, returns, done_idxs, rtgs, timesteps, stepwise_returns = create_dataset(args.num_buffers, args.num_steps, args.game, args.data_dir_prefix, args.trajectories_per_buffer)
+obss, actions, _, done_idxs, rtgs, timesteps, stepwise_returns = create_dataset(args.num_buffers, args.num_steps, args.game, args.data_dir_prefix, args.trajectories_per_buffer)
 
 # set up logging
 logging.basicConfig(
@@ -133,7 +133,7 @@ logging.basicConfig(
         stream=sys.stdout,
 )
 
-if args.block_type not in ["recc" or "recc_enc"]:
+if args.block_type not in ["recc", "recc_enc"]:
     train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps)
 else:
     train_dataset = StateActionReturnDataset_AllTraj(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps, stepwise_returns)
@@ -162,7 +162,7 @@ tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, batch_accum
                       lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(train_dataset)*args.context_length*3,
                       num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps),
                       train_dropout=args.train_dropout, test_evals=args.test_evals)
-if args.block_type not in ["recc" or "recc_enc"]:
+if args.block_type not in ["recc", "recc_enc"]:
     trainer = Trainer(model, train_dataset, None, tconf)
 elif args.block_type == "recc":
     tconf.warmup_tokens = train_dataset.total_trainable_points

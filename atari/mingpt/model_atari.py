@@ -575,9 +575,6 @@ class GPT_DEC(nn.Module):
                     no_decay.add(fpn)
 
         # special case the position embedding parameter in the root GPT module as not decayed
-        if self.config.block_type != "recc":
-            no_decay.add('pos_emb')
-            no_decay.add('global_pos_emb')
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.named_parameters()}
@@ -643,8 +640,8 @@ class GPT_DEC(nn.Module):
             states.reshape(-1, 4, 84, 84).type(torch.float32).contiguous())  # (batch * block_size, n_embd)
         state_embeddings = state_embeddings.reshape(states.shape[0], states.shape[1],
                                                     self.config.n_embd)  # (batch, block_size, n_embd)
-        step_rewards_embeddings = self.ret_emb(step_rewards.type(torch.float32))
         if actions is not None and self.model_type == 'reward_conditioned':
+            step_rewards_embeddings = self.ret_emb(step_rewards.type(torch.float32))
             action_embeddings = self.action_embeddings(
                 actions.type(torch.long).squeeze(-1))  # (batch, block_size, n_embd)
             token_embeddings = torch.zeros(
