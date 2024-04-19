@@ -84,4 +84,4 @@ def create_dataset(num_buffers, num_steps, game, data_dir_prefix, trajectories_p
         start_index = i+1
     print('max timestep is %d' % max(timesteps))
 
-    return obss, actions, returns, done_idxs, rtg, timesteps
+    return obss, actions, returns, done_idxs, rtg, timesteps, stepwise_returns

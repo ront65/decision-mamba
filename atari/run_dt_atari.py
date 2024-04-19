@@ -7,8 +7,8 @@ import numpy as np
 import torch
 from torch.nn import functional as F
 from torch.utils.data import Dataset
-from mingpt.model_atari import GPT, GPTConfig
-from mingpt.trainer_atari import Trainer, TrainerConfig, TrainerRec
+from mingpt.model_atari import GPT, GPTConfig, GPT_EncDec
+from mingpt.trainer_atari import Trainer, TrainerConfig, TrainerRec, TrainerRecEnc
 import torch
 #import blosc
 import argparse
@@ -69,7 +69,7 @@ class StateActionReturnDataset(Dataset):
 
 class StateActionReturnDataset_AllTraj(Dataset):
 
-    def __init__(self, data, block_size, actions, done_idxs, rtgs, timesteps, jumper=1):
+    def __init__(self, data, block_size, actions, done_idxs, rtgs, timesteps, stepwise_returns):
         self.available_idx = np.zeros(done_idxs.shape, dtype=done_idxs.dtype)
         self.available_idx[1:] = np.array(done_idxs[:-1])
         self.available_idx[0] = 0
@@ -77,22 +77,37 @@ class StateActionReturnDataset_AllTraj(Dataset):
         self.total_trainable_points = (done_idxs-self.available_idx).sum()
         self.block_size = max(timesteps)
         self.vocab_size = max(actions) + 1
+        self.idx_by_rewards = sorted(list(range(len(self.available_idx))),
+                                     key=lambda z: rtgs[self.available_idx[z]], reverse=True)
         self.data = data
         self.actions = actions
         self.done_idxs = done_idxs
+        self.rewards = stepwise_returns
         self.rtgs = rtgs
-        self.timesteps = timesteps
 
-        self.jumper = jumper
         print(f"real Dataset size: {len(self.available_idx)}, maxsize: {self.max_block_size}, trainable_pts: {self.total_trainable_points}")
         print(f"Regular Dataset size: {len(self.data) - block_size}")
         #print(f"altered Dataset size: {len(self.available_idx) }, maxsize: {self.max_block_size}")
 
     def __len__(self):
-        return len(self.available_idx) * self.jumper
+        return len(self.available_idx)
+
+    def get_best_k_paths(self, k=1):
+        k = min(k, len(self.available_idx))
+        states, actions, rtgs, masks, rewards = [], [], [], [], []
+        for j in range(k):
+            items = self.__getitem__(self.idx_by_rewards[j])
+            i_states, i_actions, i_rtgs, i_masks, i_rewards = [x.unqueeze(0) for x in items]
+            states.append(i_states)
+            actions.append(i_actions)
+            rtgs.append(i_rtgs)
+            masks.append(i_masks)
+            rewards.append(i_rewards)
+        output = [states, actions, rtgs, masks, rewards]
+        return [torch.cat(y, dim=0) for y in output]
+
 
     def __getitem__(self, idx):
-        idx = idx % len(self.available_idx)
         idx2 = self.available_idx[idx]
         done_idx = self.done_idxs[idx]
         idx = idx2
@@ -102,12 +117,13 @@ class StateActionReturnDataset_AllTraj(Dataset):
         states = states / 255.
         actions = torch.tensor(self.actions[idx:done_idx], dtype=torch.long).unsqueeze(1)  # (block_size, 1)
         rtgs = torch.tensor(self.rtgs[idx:done_idx], dtype=torch.float32).unsqueeze(1)
-        timesteps = torch.tensor(self.timesteps[idx:done_idx], dtype=torch.int64).unsqueeze(1)
-        out = [states, actions, rtgs, torch.ones(rtgs.shape), timesteps]
+        rewards = torch.tensor(self.rewards[idx:done_idx], dtype=torch.float32).unsqueeze(1)
+        #timesteps = torch.tensor(self.timesteps[idx:done_idx], dtype=torch.int64).unsqueeze(1)
+        out = [states, actions, rtgs, torch.ones(rtgs.shape), rewards]
         out2 = [torch.cat([r, torch.zeros((self.max_block_size-block_size,r.shape[1]), dtype=r.dtype)], dim=0) for r in out]
         return out2
 
-obss, actions, returns, done_idxs, rtgs, timesteps = create_dataset(args.num_buffers, args.num_steps, args.game, args.data_dir_prefix, args.trajectories_per_buffer)
+obss, actions, returns, done_idxs, rtgs, timesteps, stepwise_returns = create_dataset(args.num_buffers, args.num_steps, args.game, args.data_dir_prefix, args.trajectories_per_buffer)
 
 # set up logging
 logging.basicConfig(
@@ -117,20 +133,28 @@ logging.basicConfig(
         stream=sys.stdout,
 )
 
-if args.block_type != "recc":
+if args.block_type not in ["recc" or "recc_enc"]:
     train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps)
 else:
-    train_dataset = StateActionReturnDataset_AllTraj(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps, 1)
+    train_dataset = StateActionReturnDataset_AllTraj(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps, stepwise_returns)
 
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
                   n_layer = args.num_layers, n_head=8, n_embd=128, 
                   model_type=args.model_type, max_timestep=max(timesteps), block_type=args.block_type,
                   embd_pdrop=args.dropout)
-model = GPT(mconf)
-
-num_params_require_grad = sum(p.numel() for p in model.parameters() if p.requires_grad)
-num_params = sum(p.numel() for p in model.parameters())
-print(f'num params: {num_params} ; num params that require grad: {num_params_require_grad}')
+if args.block_type != "recc_enc":
+    model = GPT(mconf)
+    num_params_require_grad = sum(p.numel() for p in model.parameters() if p.requires_grad)
+    num_params = sum(p.numel() for p in model.parameters())
+    print(f'num params: {num_params} ; num params that require grad: {num_params_require_grad}')
+else:
+    model_enc, model_dec = GPT_EncDec(mconf)
+    num_params_require_grad = sum(p.numel() for p in model_enc.parameters() if p.requires_grad)
+    num_params = sum(p.numel() for p in model_enc.parameters())
+    print(f'ENC: num params: {num_params} ; num params that require grad: {num_params_require_grad}')
+    num_params_require_grad = sum(p.numel() for p in model_dec.parameters() if p.requires_grad)
+    num_params = sum(p.numel() for p in model_dec.parameters())
+    print(f'DEC: num params: {num_params} ; num params that require grad: {num_params_require_grad}')
 
 # initialize a trainer instance and kick off training
 epochs = args.epochs
@@ -138,12 +162,17 @@ tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, batch_accum
                       lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(train_dataset)*args.context_length*3,
                       num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps),
                       train_dropout=args.train_dropout, test_evals=args.test_evals)
-if args.block_type != "recc":
+if args.block_type not in ["recc" or "recc_enc"]:
     trainer = Trainer(model, train_dataset, None, tconf)
-else:
+elif args.block_type == "recc":
     tconf.warmup_tokens = train_dataset.total_trainable_points
     tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * 0.8)
     tconf.jumper = args.jumper
     trainer = TrainerRec(model, train_dataset, None, tconf)
+else:
+    tconf.warmup_tokens = train_dataset.total_trainable_points
+    tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * 0.8)
+    tconf.jumper = args.jumper
+    trainer = TrainerRecEnc(model_enc, model_dec, train_dataset, None, tconf)
 
 trainer.train()

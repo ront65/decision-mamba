@@ -28,9 +28,14 @@ logger = logging.getLogger(__name__)
 
 import numpy as np
 if __name__!="__main__":
-    from mingpt.mamba_mixer import MixerModel
+    from mingpt.mamba_mixer import MixerModel, BidirectMixerModel
 else:
-    from mamba_mixer import MixerModel
+    from mamba_mixer import MixerModel, BidirectMixerModel
+
+def GPT_EncDec(conf):
+    model_enc = GPT_ENC(conf)
+    model_dec = GPT_DEC(conf)
+    return model_enc, model_dec
 
 class GELU(nn.Module):
     def forward(self, input):
@@ -133,8 +138,9 @@ class GPT(nn.Module):
         # input embedding stem
         self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
         # self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))
-        self.pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep + 1, config.n_embd))
-        self.global_pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep+1, config.n_embd))
+        if self.config.block_type != "recc":
+            self.pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep + 1, config.n_embd))
+            self.global_pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep+1, config.n_embd))
         self.drop = nn.Dropout(config.embd_pdrop)
 
         # transformer
@@ -209,8 +215,9 @@ class GPT(nn.Module):
                     no_decay.add(fpn)
 
         # special case the position embedding parameter in the root GPT module as not decayed
-        no_decay.add('pos_emb')
-        no_decay.add('global_pos_emb')
+        if self.config.block_type != "recc":
+            no_decay.add('pos_emb')
+            no_decay.add('global_pos_emb')
 
         # validate that we considered every parameter
         param_dict = {pn: p for pn, p in self.named_parameters()}
@@ -348,6 +355,320 @@ class GPT(nn.Module):
         #        x = self.ln_f(x)
         logits = self.head(x)
         logits = logits[:, -1, :].reshape(1,1,-1)
+
+        return logits, new_mamba_states
+
+
+#######################################################################################################################
+#######################################################################################################################
+#######################################################################################################################
+
+class GPT_ENC(nn.Module):
+    """  the full GPT language model, with a context size of block_size """
+
+    def __init__(self, config):
+        super().__init__()
+
+        self.config = config
+
+        self.model_type = config.model_type
+
+        # input embedding stem
+        self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
+        # self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))
+        self.drop = nn.Dropout(config.embd_pdrop)
+
+        # transformer
+        self.blocks = BidirectMixerModel(d_model=config.n_embd, n_layers=2)
+        # decoder head
+        #        self.ln_f = nn.LayerNorm(config.n_embd)
+        self.head = nn.Linear(config.n_embd, config.n_embd)
+
+        self.block_size = config.block_size
+        self.apply(self._init_weights)
+
+        logger.info("number of parameters: %e", sum(p.numel() for p in self.parameters()))
+
+        self.state_encoder = nn.Sequential(nn.Conv2d(4, 32, 8, stride=4, padding=0), nn.ReLU(),
+                                           nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
+                                           nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
+                                           nn.Flatten(), nn.Linear(3136, config.n_embd), nn.Tanh())
+
+        self.ret_emb = nn.Sequential(nn.Linear(1, config.n_embd), nn.Tanh())
+
+        self.action_embeddings = nn.Sequential(nn.Embedding(config.vocab_size, config.n_embd), nn.Tanh())
+        nn.init.normal_(self.action_embeddings[0].weight, mean=0.0, std=0.02)
+
+    def get_block_size(self):
+        return self.block_size
+
+    def _init_weights(self, module):
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
+    def configure_optimizers(self, train_config):
+        """
+        This long function is unfortunately doing something very simple and is being very defensive:
+        We are separating out all parameters of the model into two buckets: those that will experience
+        weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
+        We are then returning the PyTorch optimizer object.
+        """
+
+        # separate out all parameters to those that will and won't experience regularizing weight decay
+        decay = set()
+        no_decay = set()
+        # whitelist_weight_modules = (torch.nn.Linear, )
+        whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d, torch.nn.Conv1d)
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
+        for mn, m in self.named_modules():
+            for pn, p in m.named_parameters():
+                fpn = '%s.%s' % (mn, pn) if mn else pn  # full param name
+                if hasattr(p, '_no_weight_decay') and p._no_weight_decay:
+                    no_decay.add(fpn)
+                elif pn.endswith('bias'):
+                    # all biases will not be decayed
+                    no_decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                    # weights of whitelist modules will be weight decayed
+                    decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                    # weights of blacklist modules will NOT be weight decayed
+                    no_decay.add(fpn)
+
+        # special case the position embedding parameter in the root GPT module as not decayed
+
+        # validate that we considered every parameter
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        inter_params = decay & no_decay
+        union_params = decay | no_decay
+        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params),)
+        assert len(
+            param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
+                                                    % (str(param_dict.keys() - union_params),)
+
+        # create the pytorch optimizer object
+        optim_groups = [
+            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": train_config.weight_decay},
+            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+        ]
+        return optim_groups
+
+    # state, action, and return
+    def forward(self, states, actions, targets=None, rewards=None, timesteps=None):
+        # states: (batch, block_size, 4*84*84)
+        # actions: (batch, block_size, 1)
+        # targets: (batch, block_size, 1)
+        # rewards: (batch, block_size, 1)
+        # timesteps: (batch, 1, 1)
+
+        state_embeddings = self.state_encoder(
+            states.reshape(-1, 4, 84, 84).type(torch.float32).contiguous())  # (batch * block_size, n_embd)
+        state_embeddings = state_embeddings.reshape(states.shape[0], states.shape[1],
+                                                    self.config.n_embd)  # (batch, block_size, n_embd)
+
+        if actions is not None and self.model_type == 'reward_conditioned':
+            rewards_embeddings = self.ret_emb(rewards.type(torch.float32))
+            action_embeddings = self.action_embeddings(
+                actions.type(torch.long).squeeze(-1))  # (batch, block_size, n_embd)
+
+            token_embeddings = torch.zeros(
+                (states.shape[0], states.shape[1] * 3, self.config.n_embd), dtype=torch.float32,
+                device=state_embeddings.device)
+            token_embeddings[:, 2::3, :] = rewards_embeddings
+            token_embeddings[:, 0::3, :] = state_embeddings
+            token_embeddings[:, 1::3, :] = action_embeddings
+        else:
+            raise NotImplementedError()
+
+        batch_size = states.shape[0]
+
+        x = self.drop(token_embeddings)
+        x = self.blocks(x)
+        #        x = self.ln_f(x)
+        logits = self.head(x)
+
+        return logits[:, 0, :]
+
+
+class GPT_DEC(nn.Module):
+    """  the full GPT language model, with a context size of block_size """
+
+    def __init__(self, config):
+        super().__init__()
+
+        self.config = config
+
+        self.model_type = config.model_type
+
+        # input embedding stem
+        self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
+        # self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))
+        self.drop = nn.Dropout(config.embd_pdrop)
+
+        self.blocks = MixerModel(d_model=config.n_embd, n_layers=config.n_layer)
+        # decoder head
+        #        self.ln_f = nn.LayerNorm(config.n_embd)
+        self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.head_rtg = nn.Linear(config.n_embd, 1)
+
+        self.block_size = config.block_size
+        self.apply(self._init_weights)
+
+        logger.info("number of parameters: %e", sum(p.numel() for p in self.parameters()))
+
+        self.state_encoder = nn.Sequential(nn.Conv2d(4, 32, 8, stride=4, padding=0), nn.ReLU(),
+                                           nn.Conv2d(32, 64, 4, stride=2, padding=0), nn.ReLU(),
+                                           nn.Conv2d(64, 64, 3, stride=1, padding=0), nn.ReLU(),
+                                           nn.Flatten(), nn.Linear(3136, config.n_embd), nn.Tanh())
+
+        self.ret_emb = nn.Sequential(nn.Linear(1, config.n_embd), nn.Tanh())
+
+        self.action_embeddings = nn.Sequential(nn.Embedding(config.vocab_size, config.n_embd), nn.Tanh())
+        nn.init.normal_(self.action_embeddings[0].weight, mean=0.0, std=0.02)
+
+    def get_block_size(self):
+        return self.block_size
+
+    def _init_weights(self, module):
+        if isinstance(module, (nn.Linear, nn.Embedding)):
+            module.weight.data.normal_(mean=0.0, std=0.02)
+            if isinstance(module, nn.Linear) and module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.LayerNorm):
+            module.bias.data.zero_()
+            module.weight.data.fill_(1.0)
+
+    def configure_optimizers(self, train_config):
+        """
+        This long function is unfortunately doing something very simple and is being very defensive:
+        We are separating out all parameters of the model into two buckets: those that will experience
+        weight decay for regularization and those that won't (biases, and layernorm/embedding weights).
+        We are then returning the PyTorch optimizer object.
+        """
+
+        # separate out all parameters to those that will and won't experience regularizing weight decay
+        decay = set()
+        no_decay = set()
+        # whitelist_weight_modules = (torch.nn.Linear, )
+        whitelist_weight_modules = (torch.nn.Linear, torch.nn.Conv2d, torch.nn.Conv1d)
+        blacklist_weight_modules = (torch.nn.LayerNorm, torch.nn.Embedding)
+        for mn, m in self.named_modules():
+            for pn, p in m.named_parameters():
+                fpn = '%s.%s' % (mn, pn) if mn else pn  # full param name
+                if hasattr(p, '_no_weight_decay') and p._no_weight_decay:
+                    no_decay.add(fpn)
+                elif "head_rtg" in fpn:
+                    no_decay.add(fpn)
+                elif pn.endswith('bias'):
+                    # all biases will not be decayed
+                    no_decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, whitelist_weight_modules):
+                    # weights of whitelist modules will be weight decayed
+                    decay.add(fpn)
+                elif pn.endswith('weight') and isinstance(m, blacklist_weight_modules):
+                    # weights of blacklist modules will NOT be weight decayed
+                    no_decay.add(fpn)
+
+        # special case the position embedding parameter in the root GPT module as not decayed
+        if self.config.block_type != "recc":
+            no_decay.add('pos_emb')
+            no_decay.add('global_pos_emb')
+
+        # validate that we considered every parameter
+        param_dict = {pn: p for pn, p in self.named_parameters()}
+        inter_params = decay & no_decay
+        union_params = decay | no_decay
+        assert len(inter_params) == 0, "parameters %s made it into both decay/no_decay sets!" % (str(inter_params),)
+        assert len(
+            param_dict.keys() - union_params) == 0, "parameters %s were not separated into either decay/no_decay set!" \
+                                                    % (str(param_dict.keys() - union_params),)
+
+        # create the pytorch optimizer object
+        optim_groups = [
+            {"params": [param_dict[pn] for pn in sorted(list(decay))], "weight_decay": train_config.weight_decay},
+            {"params": [param_dict[pn] for pn in sorted(list(no_decay))], "weight_decay": 0.0},
+        ]
+        return optim_groups
+
+    def get_model_init_state(self, batch_size):
+        return self.blocks.allocate_inference_cache(batch_size, 0, dtype=None)
+
+    # state, action, and return
+    def forward(self, states, actions, targets=None, rewards=None, encode=None):
+        # states: (batch, block_size, 4*84*84)
+        # actions: (batch, block_size, 1)
+        # targets: (batch, block_size, 1)
+        # rewards: (batch, block_size, 1)
+        # encode: (batch, 1, d_model)
+
+        state_embeddings = self.state_encoder(
+            states.reshape(-1, 4, 84, 84).type(torch.float32).contiguous())  # (batch * block_size, n_embd)
+        state_embeddings = state_embeddings.reshape(states.shape[0], states.shape[1],
+                                                    self.config.n_embd)  # (batch, block_size, n_embd)
+
+        if actions is not None and self.model_type == 'reward_conditioned':
+            rewards_embeddings = self.ret_emb(rewards.type(torch.float32))
+            action_embeddings = self.action_embeddings(
+                actions.type(torch.long).squeeze(-1))  # (batch, block_size, n_embd)
+
+            token_embeddings = torch.zeros(
+                (states.shape[0], states.shape[1] * 3, self.config.n_embd), dtype=torch.float32,
+                device=state_embeddings.device)
+            token_embeddings[:, 2::3, :] = rewards_embeddings
+            token_embeddings[:, 0::3, :] = state_embeddings
+            token_embeddings[:, 1::3, :] = action_embeddings
+
+        batch_size = states.shape[0]
+        x = self.drop(token_embeddings + encode)
+        x = self.blocks(x)
+        #        x = self.ln_f(x)
+        logits = self.head(x)[:, 0::3, :]
+        rtg_pred = self.head_rtg(x)[:, 0::3, :]
+
+        return logits, rtg_pred
+
+    def step(self, states, actions, targets=None, step_rewards=None, timesteps=None, mamba_states=None, encode=None, encode_type=0):
+        # states: (batch, block_size, 4*84*84)
+        # actions: (batch, block_size, 1)
+        # targets: (batch, block_size, 1)
+        # step_rewards: (batch, block_size, 1)
+        # timesteps: (batch, 1, 1)
+        assert mamba_states is not None
+        state_embeddings = self.state_encoder(
+            states.reshape(-1, 4, 84, 84).type(torch.float32).contiguous())  # (batch * block_size, n_embd)
+        state_embeddings = state_embeddings.reshape(states.shape[0], states.shape[1],
+                                                    self.config.n_embd)  # (batch, block_size, n_embd)
+        step_rewards_embeddings = self.ret_emb(step_rewards.type(torch.float32))
+        if actions is not None and self.model_type == 'reward_conditioned':
+            action_embeddings = self.action_embeddings(
+                actions.type(torch.long).squeeze(-1))  # (batch, block_size, n_embd)
+            token_embeddings = torch.zeros(
+                (states.shape[0], states.shape[1] * 3, self.config.n_embd), dtype=torch.float32,
+                device=state_embeddings.device)
+            token_embeddings[:, 1::3, :] = step_rewards_embeddings
+            token_embeddings[:, 2::3, :] = state_embeddings
+            token_embeddings[:, 0::3, :] = action_embeddings
+        elif actions is None and self.model_type == 'reward_conditioned':  # only happens at very first timestep of evaluation
+            token_embeddings = state_embeddings  # really just [:,1,:]
+        else:
+            raise NotImplementedError()
+
+        if encode_type == 0:
+            x = self.drop(token_embeddings + encode[0].unsqueeze(0))
+            zz = torch.zeros_like(x)
+            new_mamba_states = mamba_states
+            for jj in range(zz.shape[1]):
+                z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
+                zz[:, jj, :] = z
+            x = zz
+
+        logits = self.head(x)
+        logits = logits[:, -1, :].reshape(1, 1, -1)
 
         return logits, new_mamba_states
 
