@@ -663,6 +663,14 @@ class GPT_DEC(nn.Module):
                 z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
                 zz[:, jj, :] = z
             x = zz
+        elif encode_type == 1:
+            x = self.drop(token_embeddings + encode.mean(dim=0).unsqueeze(0))
+            zz = torch.zeros_like(x)
+            new_mamba_states = mamba_states
+            for jj in range(zz.shape[1]):
+                z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
+                zz[:, jj, :] = z
+            x = zz
 
         logits = self.head(x)
         logits = logits[:, -1, :].reshape(1, 1, -1)
