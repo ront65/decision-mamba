@@ -665,5 +665,5 @@ class TrainerRecEnc:
         env.close()
         eval_return = sum(T_rewards) * 1.0 / self.config.test_evals
         print(f"Rewards given: {T_rewards}")
-        print(f"Mean target return (real_reward? {real_rewards}): {ret}, eval return: {eval_return}")
+        print(f"Mean target return mode {enc_mode} (real_reward? {real_rewards}): {ret}, eval return: {eval_return}")
         return eval_return

@@ -681,7 +681,7 @@ class GPT_DEC(nn.Module):
             new_mamba_states = [[z.repeat(encode_size, 1, 1) for z in q] for q in mamba_states]
             for jj in range(zz.shape[1]):
                 z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
-                zz[:, jj, :] = z
+                zz[:, jj, :] = z.squeeze(1)
             x = zz
             rtgs = self.head_rtg(x)
             best = rtgs[:,-1,0].argmax()
