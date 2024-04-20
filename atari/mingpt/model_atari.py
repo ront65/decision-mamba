@@ -663,6 +663,7 @@ class GPT_DEC(nn.Module):
                 z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
                 zz[:, jj, :] = z
             x = zz
+            logits = self.head(x)
         elif encode_type == 1:
             x = self.drop(token_embeddings + encode.mean(dim=0).unsqueeze(0))
             zz = torch.zeros_like(x)
@@ -671,8 +672,23 @@ class GPT_DEC(nn.Module):
                 z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
                 zz[:, jj, :] = z
             x = zz
+            logits = self.head(x)
+        elif encode_type == 2:
+            encode_size = encode.shape[0]
+            token_embeddings = token_embeddings.repeat(encode_size, 1, 1)
+            x = self.drop(token_embeddings + encode)
+            zz = torch.zeros_like(x)
+            new_mamba_states = [[z.repeat(encode_size, 1, 1) for z in q] for q in mamba_states]
+            for jj in range(zz.shape[1]):
+                z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
+                zz[:, jj, :] = z
+            x = zz
+            rtgs = self.head_rtg(x)
+            best = rtgs[:,-1,0].argmax()
+            x = x[best, ...].unsqueeze(0)
+            new_mamba_states = [[z[best, ...].unsqueeze(0) for z in q] for q in new_mamba_states]
+            logits = self.head(x)
 
-        logits = self.head(x)
         logits = logits[:, -1, :].reshape(1, 1, -1)
 
         return logits, new_mamba_states

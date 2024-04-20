@@ -507,8 +507,10 @@ class TrainerRecEnc:
 
                     new_logits = logits.reshape(-1, logits.size(-1))[new_m > 0]
                     loss1 = F.cross_entropy(new_logits, new_y)
-                    loss2 = ((rtg_exp - r) ** 2)[m > 0].mean()
-                    loss = loss1 + loss2
+                    loss2 = ((rtg_exp[:, :-1, :] - r[:, 1:, :]) ** 2)[m[:, 1:, :] > 0].mean()
+                    loss = loss1
+                    if config.encdec_rtgs > 0:
+                        loss += config.encdec_rtgs * loss2
 
                     loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
                     losses.append(loss.item())
@@ -575,25 +577,20 @@ class TrainerRecEnc:
             # pre eval:
             self.model_enc.train(False)
             self.model_dec.train(False)
-            top_5_enc = self.train_dataset.get_best_k_paths(5)
-            x, y, _, _, w = [q.to(self.device) for q in top_5_enc]
+            top_enc = self.train_dataset.get_best_k_paths(5)
+            x, y, _, _, w = [q.to(self.device) for q in top_enc]
             enc_dat = self.model_enc(x, y, y, w).unsqueeze(1)
 
 
             if self.config.model_type == 'naive':
                 eval_return = self.get_returns(0)
             elif self.config.model_type == 'reward_conditioned':
-                if self.config.game == 'Breakout':
+                if self.config.game in ['Breakout', 'Seaquest', 'Qbert', 'Pong']:
                     #eval_return = self.get_returns(90, real_rewards=True)
-                    eval_return = self.get_returns(90, enc_dat)
-                elif self.config.game == 'Seaquest':
-                    #eval_return = self.get_returns(1150, real_rewards=True)
-                    eval_return = self.get_returns(300, enc_dat)
-                elif self.config.game == 'Qbert':
-                    #eval_return = self.get_returns(14000, real_rewards=True)
-                    eval_return = self.get_returns(500, enc_dat)
-                elif self.config.game == 'Pong':
-                    eval_return = self.get_returns(20, enc_dat)
+                    eval_return = self.get_returns(epoch, enc_dat, enc_mode=0)
+                    eval_return = self.get_returns(epoch, enc_dat, enc_mode=1)
+                    if config.encdec_rtgs > 0:
+                        eval_return = self.get_returns(epoch, enc_dat, enc_mode=2)
                 else:
                     raise NotImplementedError()
             else:
