@@ -191,7 +191,7 @@ class Trainer:
 
     def get_returns(self, ret):
         self.model.train(False)
-        env = gym.make(f"ALE/{self.config.game}-v5", repeat_action_probability = 0, frameskip=1, max_episode_steps=108e3)
+        env = gym.make(f"ALE/{self.config.game}-v5", repeat_action_probability = self.config.sticky_prob, frameskip=1, max_episode_steps=108e3)
         env = CustomFrameStack(AtariPreprocessing(env, scale_obs=True), num_stack=4)
 
         T_rewards, T_Qs = [], []
@@ -221,7 +221,7 @@ class Trainer:
                 reward_sum += reward
                 j += 1
 
-                if j > 1e4:
+                if j > self.config.max_eval_steps:
                     done = True
                 
                 if done:

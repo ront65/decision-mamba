@@ -11,6 +11,9 @@ from functools import partial
 
 def create_block(
     d_model,
+    d_state = 16,
+    d_conv = 4,
+    expand = 2,
     ssm_cfg=None,
     norm_epsilon=1e-5,
     rms_norm=False,
@@ -21,7 +24,10 @@ def create_block(
     if ssm_cfg is None:
         ssm_cfg = {}
 #    factory_kwargs = {"device": device, "dtype": dtype}
-    mixer_cls = partial(Mamba, layer_idx=layer_idx, **ssm_cfg)# **factory_kwargs)
+    mixer_cls = partial(
+        Mamba, d_state = d_state, d_conv = d_conv, expand = expand,
+        layer_idx=layer_idx, **ssm_cfg
+    )# **factory_kwargs)
     norm_cls = partial(
         nn.LayerNorm if not rms_norm else RMSNorm, eps=norm_epsilon,# **factory_kwargs
     )
@@ -42,6 +48,9 @@ class MixerModel(nn.Module):
         self,
         d_model: int,
         n_layers: int,
+        d_state = 16,
+        d_conv = 4,
+        expand = 2,
         ssm_cfg=None,
         norm_epsilon: float = 1e-5,
         rms_norm: bool = False,
@@ -66,6 +75,9 @@ class MixerModel(nn.Module):
             [
                 create_block(
                     d_model,
+                    d_state = d_state,
+                    d_conv = d_conv,
+                    expand = expand,
                     ssm_cfg=ssm_cfg,
                     norm_epsilon=norm_epsilon,
                     rms_norm=rms_norm,

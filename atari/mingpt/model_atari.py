@@ -118,6 +118,7 @@ class Block(nn.Module):
         x = x + self.mlp(self.ln2(x))
         return x
 
+
 class GPT(nn.Module):
     """  the full GPT language model, with a context size of block_size """
 
@@ -143,7 +144,10 @@ class GPT(nn.Module):
                 )
             )
         else:
-            self.blocks = MixerModel(d_model = config.n_embd, n_layers = config.n_layer)
+            self.blocks = MixerModel(
+                d_model = config.n_embd, n_layers = config.n_layer, d_state = config.d_state, 
+                d_conv = config.d_conv, expand = config.expansion, 
+            )
         # decoder head
 #        self.ln_f = nn.LayerNorm(config.n_embd)
         self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)

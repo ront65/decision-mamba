@@ -30,6 +30,19 @@ parser.add_argument('--block_type', type=str, default='transformer')
 parser.add_argument('--trajectories_per_buffer', type=int, default=10, help='Number of trajectories to sample from each of the buffers.')
 parser.add_argument('--data_dir_prefix', type=str, default='./dqn_replay/')
 
+parser.add_argument('--d_model', type=int, default=128)
+parser.add_argument('--d_state', type=int, default=16)
+parser.add_argument('--d_conv', type=int, default=4)
+parser.add_argument('--expansion', type=int, default=2)
+
+parser.add_argument('--lr', type=float, default=6e-4)
+parser.add_argument('--dropout', type=float, default=0.1)
+parser.add_argument('--sticky_actions_prob', type=float, default=0.0)
+parser.add_argument('--max_eval_steps', type=int, default=1e4)
+
+
+
+
 parser.add_argument('--wandb_project', type=str, default='default_project')
 args = parser.parse_args()
 
@@ -77,8 +90,15 @@ run = wandb.init(
         'n_layers' : args.num_layers,
         'epochs' : args.epochs,
         'batch_size' : args.batch_size,
-        'embedding_dim' : 128,
-        'lr' : 6e-4,
+        'context_length' : args.context_length,
+        'num_steps' : args.num_steps,
+        'embedding_dim' : args.d_model,
+        'lr' : args.lr,
+        'd_state' : args.d_state,
+        'dropout' : args.dropout,
+        'expansion' : args.expansion,
+        'd_conv' : args.d_conv,
+        'sticky_prob' : args.sticky_actions_prob,
     },
 )
 
@@ -94,7 +114,10 @@ logging.basicConfig(
 train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, done_idxs, rtgs, timesteps)
 
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
-                  n_layer = args.num_layers, n_head=8, n_embd=128, 
+                  n_layer = args.num_layers, n_head=8, n_embd=args.d_model, 
+                  embd_pdrop = args.dropout,
+                  d_state = args.d_state, d_conv = args.d_conv, 
+                  mamba_expansion = args.expansion, 
                   model_type=args.model_type, max_timestep=max(timesteps), block_type=args.block_type)
 
 model = GPT(mconf)
@@ -105,10 +128,13 @@ print(f'num params: {num_params} ; num params that require grad: {num_params_req
 
 # initialize a trainer instance and kick off training
 epochs = args.epochs
-tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, learning_rate=6e-4,
+tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, learning_rate=args.lr,
                       lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(train_dataset)*args.context_length*3,
-                      num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps))
+                      num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps),
+                      sticky_prob = args.sticky_actions_prob, max_eval_steps = args.max_eval_steps)
+
 trainer = Trainer(model, train_dataset, None, tconf)
 
 trainer.train()
+
 wandb.finish()
