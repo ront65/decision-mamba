@@ -590,7 +590,7 @@ class TrainerRecEnc:
             self.model.train(False)
             top_enc = self.train_dataset.get_best_k_paths(5)
             x, y, _, _, w = [q.to(self.device) for q in top_enc]
-            enc_dat = self.model.get_enc(x, y, y, w)
+            enc_dat = self.model.module.get_enc(x, y, y, w)
 
 
             if self.config.model_type == 'naive':
