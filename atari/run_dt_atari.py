@@ -42,6 +42,7 @@ parser.add_argument('--trajectories_per_buffer', type=int, default=10, help='Num
 parser.add_argument('--data_dir_prefix', type=str, default='./dqn_replay/')
 args = parser.parse_args()
 args.wandb_log = bool(args.wandb_log)
+args.encdec_keepgrad = bool(args.encdec_keepgrad)
 
 set_seed(args.seed)
 
@@ -169,20 +170,14 @@ else:
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
                   n_layer = args.num_layers, n_head=8, n_embd=128, 
                   model_type=args.model_type, max_timestep=max(timesteps), block_type=args.block_type,
-                  embd_pdrop=args.dropout, encdec_rtgs=bool(args.encdec_keepgrad))
+                  embd_pdrop=args.dropout, encdec_keepgrad=args.encdec_keepgrad)
 if args.block_type != "recc_enc":
     model = GPT(mconf)
-    num_params_require_grad = sum(p.numel() for p in model.parameters() if p.requires_grad)
-    num_params = sum(p.numel() for p in model.parameters())
-    print(f'num params: {num_params} ; num params that require grad: {num_params_require_grad}')
 else:
-    model_enc, model_dec = GPT_EncDec(mconf)
-    num_params_require_grad = sum(p.numel() for p in model_enc.parameters() if p.requires_grad)
-    num_params = sum(p.numel() for p in model_enc.parameters())
-    print(f'ENC: num params: {num_params} ; num params that require grad: {num_params_require_grad}')
-    num_params_require_grad = sum(p.numel() for p in model_dec.parameters() if p.requires_grad)
-    num_params = sum(p.numel() for p in model_dec.parameters())
-    print(f'DEC: num params: {num_params} ; num params that require grad: {num_params_require_grad}')
+    model = GPT_EncDec(mconf)
+num_params_require_grad = sum(p.numel() for p in model.parameters() if p.requires_grad)
+num_params = sum(p.numel() for p in model.parameters())
+print(f'ENC: num params: {num_params} ; num params that require grad: {num_params_require_grad}')
 
 # initialize a trainer instance and kick off training
 epochs = args.epochs
@@ -202,6 +197,6 @@ else:
     tconf.warmup_tokens = train_dataset.total_trainable_points
     tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * 0.8)
     tconf.jumper = args.jumper
-    trainer = TrainerRecEnc(model_enc, model_dec, train_dataset, None, tconf)
+    trainer = TrainerRecEnc(model, train_dataset, None, tconf)
 
 trainer.train()

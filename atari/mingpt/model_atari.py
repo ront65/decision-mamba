@@ -33,6 +33,7 @@ else:
     from mamba_mixer import MixerModel, BidirectMixerModel
 
 def GPT_EncDec(conf):
+    return GPT_DEC(conf)
     model_enc = GPT_ENC(conf)
     model_dec = GPT_DEC(conf)
     return model_enc, model_dec
@@ -511,9 +512,11 @@ class GPT_DEC(nn.Module):
         self.drop = nn.Dropout(config.embd_pdrop)
 
         self.blocks = MixerModel(d_model=config.n_embd, n_layers=config.n_layer)
+        self.enc_blocks = BidirectMixerModel(d_model=config.n_embd, n_layers=2)
         # decoder head
         #        self.ln_f = nn.LayerNorm(config.n_embd)
         self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
+        self.enc_head = nn.Linear(config.n_embd, config.n_embd)
         self.head_rtg = nn.Sequential(nn.Linear(config.n_embd, config.n_embd), nn.GELU(), nn.Linear(config.n_embd, 1))
 
         self.block_size = config.block_size
@@ -595,7 +598,41 @@ class GPT_DEC(nn.Module):
     def get_model_init_state(self, batch_size):
         return self.blocks.allocate_inference_cache(batch_size, 0, dtype=None)
 
-    # state, action, and return
+    def get_enc(self, states, actions, targets=None, rewards=None, timesteps=None):
+        # states: (batch, block_size, 4*84*84)
+        # actions: (batch, block_size, 1)
+        # targets: (batch, block_size, 1)
+        # rewards: (batch, block_size, 1)
+        # timesteps: (batch, 1, 1)
+
+        state_embeddings = self.state_encoder(
+            states.reshape(-1, 4, 84, 84).type(torch.float32).contiguous())  # (batch * block_size, n_embd)
+        state_embeddings = state_embeddings.reshape(states.shape[0], states.shape[1],
+                                                    self.config.n_embd)  # (batch, block_size, n_embd)
+
+        if actions is not None and self.model_type == 'reward_conditioned':
+            rewards_embeddings = self.ret_emb(rewards.type(torch.float32))
+            action_embeddings = self.action_embeddings(
+                actions.type(torch.long).squeeze(-1))  # (batch, block_size, n_embd)
+
+            token_embeddings = torch.zeros(
+                (states.shape[0], states.shape[1] * 3, self.config.n_embd), dtype=torch.float32,
+                device=state_embeddings.device)
+            token_embeddings[:, 2::3, :] = rewards_embeddings
+            token_embeddings[:, 0::3, :] = state_embeddings
+            token_embeddings[:, 1::3, :] = action_embeddings
+        else:
+            raise NotImplementedError()
+
+        batch_size = states.shape[0]
+
+        x = self.drop(token_embeddings)
+        x = self.enc_blocks(x)
+        #        x = self.ln_f(x)
+        logits = self.enc_head(x)
+
+        return logits[:, 0, :].unsqueeze(1)
+
     def forward(self, states, actions, targets=None, rewards=None, encode=None):
         # states: (batch, block_size, 4*84*84)
         # actions: (batch, block_size, 1)
@@ -621,6 +658,7 @@ class GPT_DEC(nn.Module):
             token_embeddings[:, 1::3, :] = action_embeddings
 
         batch_size = states.shape[0]
+        encode = self.enc_head(self.enc_blocks(token_embeddings))[:, 0, :].unsqueeze(1)
         x = self.drop(token_embeddings + encode)
         x = self.blocks(x)
         #        x = self.ln_f(x)

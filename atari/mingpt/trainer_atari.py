@@ -458,9 +458,8 @@ class TrainerRec:
         return eval_return
 
 class TrainerRecEnc:
-    def __init__(self, model_enc, model_dec, train_dataset, test_dataset, config):
-        self.model_enc = model_enc
-        self.model_dec = model_dec
+    def __init__(self, model, train_dataset, test_dataset, config):
+        self.model = model
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
         self.config = config
@@ -469,8 +468,7 @@ class TrainerRecEnc:
         self.device = 'cpu'
         if torch.cuda.is_available():
             self.device = torch.cuda.current_device()
-            self.model_enc = torch.nn.DataParallel(self.model_enc).to(self.device)
-            self.model_dec = torch.nn.DataParallel(self.model_dec).to(self.device)
+            self.model = torch.nn.DataParallel(self.model).to(self.device)
 
     def save_checkpoint(self):
         # DataParallel wrappers keep raw model object in .module attribute
@@ -480,16 +478,14 @@ class TrainerRecEnc:
 
     def train(self):
         self.wandbtoken = 0
-        model_enc, model_dec, config = self.model_enc, self.model_dec, self.config
-        raw_model_enc = model_enc.module if hasattr(self.model_enc, "module") else model_enc
-        raw_model_dec = model_dec.module if hasattr(self.model_dec, "module") else model_dec
-        optim_groups = raw_model_enc.configure_optimizers(config) + raw_model_dec.configure_optimizers(config)
+        model, config = self.model, self.config
+        raw_model = model.module if hasattr(self.model, "module") else model
+        optim_groups = raw_model.configure_optimizers(config)
         optimizer = torch.optim.AdamW(optim_groups, lr=config.learning_rate, betas=config.betas)
 
         def run_epoch(split, epoch_num=0):
             is_train = split == 'train'
-            model_enc.train(is_train)
-            model_dec.train(is_train)
+            model.train(is_train)
             data = self.train_dataset if is_train else self.test_dataset
             loader = DataLoader(data, shuffle=True, pin_memory=True,
                                 batch_size=config.batch_size,
@@ -512,8 +508,7 @@ class TrainerRecEnc:
                 # forward the model
                 with torch.set_grad_enabled(is_train):
                     # logits, loss = model(x, y, r)
-                    encode = model_enc(x, y, y, w).unsqueeze(1)
-                    logits, rtg_exp = model_dec(x, y, y, w, encode)
+                    logits, rtg_exp = model(x, y, y, w, None)
 
                     new_m = m.reshape(-1)
                     new_y = y.reshape(-1)[new_m > 0]
@@ -539,10 +534,9 @@ class TrainerRecEnc:
                         if self.config.wandb_log and self.wandbtoken % 10 == 0:
                             logs = {}
                             logs[f"train/loss1"] = loss1.item()
-                            logs[f"train/loss2"] = loss2.item()
+                            logs[f"train/loss2"] = loss2.item() * config.encdec_rtgs
                             wandb.log(logs)
-                        torch.nn.utils.clip_grad_norm_(model_enc.parameters(), config.grad_norm_clip)
-                        torch.nn.utils.clip_grad_norm_(model_dec.parameters(), config.grad_norm_clip)
+                        torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
                         optimizer.step()
 
                     # decay the learning rate based on our progress
@@ -577,8 +571,7 @@ class TrainerRecEnc:
         self.tokens = 0  # counter used for learning rate decay
 
         for epoch in range(config.max_epochs):
-            self.model_enc.train(True)
-            self.model_dec.train(True)
+            self.model.train(True)
             run_epoch('train', epoch_num=epoch)
             # if self.test_dataset is not None:
             #     test_loss = run_epoch('test')
@@ -594,11 +587,10 @@ class TrainerRecEnc:
             # -- pass in target returns
 
             # pre eval:
-            self.model_enc.train(False)
-            self.model_dec.train(False)
+            self.model.train(False)
             top_enc = self.train_dataset.get_best_k_paths(5)
             x, y, _, _, w = [q.to(self.device) for q in top_enc]
-            enc_dat = self.model_enc(x, y, y, w).unsqueeze(1)
+            enc_dat = self.model.get_enc(x, y, y, w)
 
 
             if self.config.model_type == 'naive':
@@ -625,10 +617,10 @@ class TrainerRecEnc:
             state = env.reset(seed = self.config.seed + i)[0]
             state = torch.from_numpy(np.array(state))
             state = state.type(torch.float32).to(self.device).unsqueeze(0).unsqueeze(0)
-            mamba_states = self.model_dec.module.get_model_init_state(1)
+            mamba_states = self.model.module.get_model_init_state(1)
             rtgs = [ret]
             # first state is from env, first rtg is target return, and first timestep is 0
-            sampled_action, mamba_states = sample_rec_enc(self.model_dec.module, state, 1, temperature=1.0, sample=True, actions=None,
+            sampled_action, mamba_states = sample_rec_enc(self.model.module, state, 1, temperature=1.0, sample=True, actions=None,
                                     step_rewards=None,
                                     timesteps=torch.zeros((1, 1, 1), dtype=torch.int64).to(self.device), mamba_states=mamba_states,
                                                           encode=enc, encode_type=enc_mode)
@@ -672,7 +664,7 @@ class TrainerRecEnc:
                 rtgs += [rtgs[-1] - sub_reward]
                 # all_states has all previous states and rtgs has all previous rtgs (will be cut to block_size in utils.sample)
                 # timestep is just current timestep
-                sampled_action, mamba_states = sample_rec_enc(self.model_dec.module, all_states.unsqueeze(0), 1, temperature=1.0, sample=True,
+                sampled_action, mamba_states = sample_rec_enc(self.model.module, all_states.unsqueeze(0), 1, temperature=1.0, sample=True,
                                         actions=torch.tensor(actions, dtype=torch.long).to(self.device).unsqueeze(
                                             1).unsqueeze(0),
                                         step_rewards=torch.tensor([sub_reward], dtype=torch.long).to(self.device).unsqueeze(
