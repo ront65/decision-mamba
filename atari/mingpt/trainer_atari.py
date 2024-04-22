@@ -31,6 +31,7 @@ from collections import deque
 import random
 import cv2
 import torch
+import wandb
 
 
 import gymnasium as gym
@@ -242,6 +243,7 @@ class Trainer:
 
 class TrainerRec:
     def __init__(self, model, train_dataset, test_dataset, config):
+        self.wandbtoken += 1
         self.model = model
         self.train_dataset = train_dataset
         self.test_dataset = test_dataset
@@ -306,6 +308,11 @@ class TrainerRec:
                         model.zero_grad()
                     loss.backward()
                     if (it+1) % config.batch_accum == 0:
+                        self.wandbtoken += 1
+                        if self.config.wandb_log and self.wandbtoken % 10 == 0:
+                            logs = {}
+                            logs[f"train/loss1"] = loss.item()
+                            wandb.log(logs)
                         torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
                         optimizer.step()
 
@@ -359,13 +366,13 @@ class TrainerRec:
                 eval_return = self.get_returns(0)
             elif self.config.model_type == 'reward_conditioned':
                 if self.config.game == 'Breakout':
-                    eval_return = self.get_returns(90, real_rewards=True)
+                    #eval_return = self.get_returns(90, real_rewards=True)
                     eval_return = self.get_returns(90)
                 elif self.config.game == 'Seaquest':
-                    eval_return = self.get_returns(1150, real_rewards=True)
+                    #eval_return = self.get_returns(1150, real_rewards=True)
                     eval_return = self.get_returns(260)
                 elif self.config.game == 'Qbert':
-                    eval_return = self.get_returns(14000, real_rewards=True)
+                    #eval_return = self.get_returns(14000, real_rewards=True)
                     eval_return = self.get_returns(500)
                 elif self.config.game == 'Pong':
                     eval_return = self.get_returns(20)
@@ -442,6 +449,11 @@ class TrainerRec:
         eval_return = sum(T_rewards) * 1.0 / self.config.test_evals
         print(f"Rewards given: {T_rewards}")
         print(f"Mean target return (real_reward? {real_rewards}): {ret}, eval return: {eval_return}")
+        if self.config.wandb_log:
+            logs = {}
+            logs["eval/return_mean"] = np.array(T_rewards).mean()
+            logs["eval/return_std"] = np.array(T_rewards).std()
+            wandb.log(logs)
         self.model.train(True)
         return eval_return
 
@@ -467,6 +479,7 @@ class TrainerRecEnc:
         # torch.save(raw_model.state_dict(), self.config.ckpt_path)
 
     def train(self):
+        self.wandbtoken = 0
         model_enc, model_dec, config = self.model_enc, self.model_dec, self.config
         raw_model_enc = model_enc.module if hasattr(self.model_enc, "module") else model_enc
         raw_model_dec = model_dec.module if hasattr(self.model_dec, "module") else model_dec
@@ -522,6 +535,12 @@ class TrainerRecEnc:
                         optimizer.zero_grad()
                     loss.backward()
                     if (it+1) % config.batch_accum == 0:
+                        self.wandbtoken += 1
+                        if self.config.wandb_log and self.wandbtoken % 10 == 0:
+                            logs = {}
+                            logs[f"train/loss1"] = loss1.item()
+                            logs[f"train/loss2"] = loss2.item()
+                            wandb.log(logs)
                         torch.nn.utils.clip_grad_norm_(model_enc.parameters(), config.grad_norm_clip)
                         torch.nn.utils.clip_grad_norm_(model_dec.parameters(), config.grad_norm_clip)
                         optimizer.step()
@@ -666,4 +685,9 @@ class TrainerRecEnc:
         eval_return = sum(T_rewards) * 1.0 / self.config.test_evals
         print(f"Rewards given: {T_rewards}")
         print(f"Mean target return mode {enc_mode} (real_reward? {real_rewards}): {ret}, eval return: {eval_return}")
+        if self.config.wandb_log:
+            logs = {}
+            logs[f"eval/return_{enc_mode}_mean"] = np.array(T_rewards).mean()
+            logs[f"eval/return_{enc_mode}_std"] = np.array(T_rewards).std()
+            wandb.log(logs)
         return eval_return

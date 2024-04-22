@@ -625,7 +625,10 @@ class GPT_DEC(nn.Module):
         x = self.blocks(x)
         #        x = self.ln_f(x)
         logits = self.head(x)[:, 0::3, :]
-        rtg_pred = self.head_rtg(x)[:, 0::3, :]
+        xp = x
+        if not self.config.encdec_keepgrad:
+            xp = xp.clone().detach()
+        rtg_pred = self.head_rtg(xp)[:, 0::3, :]
 
         return logits, rtg_pred
 
