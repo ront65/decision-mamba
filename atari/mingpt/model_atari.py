@@ -514,7 +514,7 @@ class GPT_DEC(nn.Module):
         # decoder head
         #        self.ln_f = nn.LayerNorm(config.n_embd)
         self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
-        self.head_rtg = nn.Linear(config.n_embd, 1)
+        self.head_rtg = nn.Sequential(nn.Linear(config.n_embd, config.n_embd), nn.GELU(), nn.Linear(config.n_embd, 1))
 
         self.block_size = config.block_size
         self.apply(self._init_weights)
