@@ -41,8 +41,8 @@ parser.add_argument('--wandb_log', type=int, default=1)
 parser.add_argument('--trajectories_per_buffer', type=int, default=10, help='Number of trajectories to sample from each of the buffers.')
 parser.add_argument('--data_dir_prefix', type=str, default='./dqn_replay/')
 args = parser.parse_args()
-args.wandb_log = bool(args.wandb_log)
-args.encdec_keepgrad = bool(args.encdec_keepgrad)
+args.wandb_log = args.wandb_log > 0
+args.encdec_keepgrad = args.encdec_keepgrad > 0
 
 set_seed(args.seed)
 
