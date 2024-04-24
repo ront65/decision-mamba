@@ -25,6 +25,7 @@ parser.add_argument('--test_evals', type=int, default=10)
 parser.add_argument('--jumper', type=int, default=15)
 parser.add_argument('--encdec_rtgs', type=float, default=0)
 parser.add_argument('--encdec_keepgrad', type=int, default=0)
+parser.add_argument('--encdec_optpaths', type=int, default=5)
 parser.add_argument('--model_type', type=str, default='reward_conditioned')
 parser.add_argument('--num_steps', type=int, default=500000)
 parser.add_argument('--num_buffers', type=int, default=50)
@@ -185,7 +186,7 @@ tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, batch_accum
                       lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(train_dataset)*args.context_length*3,
                       num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps),
                       train_dropout=args.train_dropout, test_evals=args.test_evals, encdec_rtgs=args.encdec_rtgs,
-                      wandb_log=args.wandb_log)
+                      wandb_log=args.wandb_log, encdec_optpaths=args.encdec_optpaths)
 if args.block_type not in ["recc", "recc_enc"]:
     trainer = Trainer(model, train_dataset, None, tconf)
 elif args.block_type == "recc":

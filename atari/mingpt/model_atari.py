@@ -510,6 +510,7 @@ class GPT_DEC(nn.Module):
         self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
         # self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))
         self.drop = nn.Dropout(config.embd_pdrop)
+        self.enc_drop = nn.Dropout(config.embd_pdrop)
 
         self.blocks = MixerModel(d_model=config.n_embd, n_layers=config.n_layer)
         self.enc_blocks = BidirectMixerModel(d_model=config.n_embd, n_layers=2)
@@ -625,8 +626,9 @@ class GPT_DEC(nn.Module):
             raise NotImplementedError()
 
         batch_size = states.shape[0]
-
-        x = self.drop(token_embeddings)
+        if self.config.encdec_keepgrad:
+            token_embeddings[:, 2::3, :] = 0
+        x = self.enc_drop(token_embeddings)
         x = self.enc_blocks(x)
         #        x = self.ln_f(x)
         logits = self.enc_head(x)
@@ -658,7 +660,12 @@ class GPT_DEC(nn.Module):
             token_embeddings[:, 1::3, :] = action_embeddings
 
         batch_size = states.shape[0]
-        encode = self.enc_head(self.enc_blocks(token_embeddings))[:, 0, :].unsqueeze(1)
+        if self.config.encdec_keepgrad:
+            token_embeddings_x = token_embeddings.clone()
+            token_embeddings_x[:, 2::3, :] = 0
+        else:
+            token_embeddings_x = token_embeddings
+        encode = self.enc_head(self.enc_blocks(self.enc_drop(token_embeddings_x)))[:, 0, :].unsqueeze(1)
         x = self.drop(token_embeddings + encode)
         x = self.blocks(x)
         #        x = self.ln_f(x)

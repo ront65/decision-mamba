@@ -515,9 +515,9 @@ class TrainerRecEnc:
 
                     new_logits = logits.reshape(-1, logits.size(-1))[new_m > 0]
                     loss1 = F.cross_entropy(new_logits, new_y)
-                    loss2 = ((rtg_exp[:, :-1, :] - r[:, 1:, :] * config.encdec_rtgs) ** 2)[m[:, 1:, :] > 0].mean()
+                    loss2 = ((rtg_exp[:, :-1, :] - r[:, 1:, :]) ** 2)[m[:, 1:, :] > 0].mean()
                     if config.encdec_rtgs > 0:
-                        loss = loss1 + loss2
+                        loss = loss1 + loss2 * config.encdec_rtgs
                     else:
                         loss = loss1
 
@@ -535,7 +535,7 @@ class TrainerRecEnc:
                         if self.config.wandb_log and self.wandbtoken % 10 == 0:
                             logs = {}
                             logs[f"train/loss1"] = loss1.item()
-                            logs[f"train/loss2"] = loss2.item()
+                            logs[f"train/loss2"] = loss2.item() * config.encdec_rtgs
                             wandb.log(logs)
                         torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
                         optimizer.step()
@@ -589,9 +589,10 @@ class TrainerRecEnc:
 
             # pre eval:
             self.model.train(False)
-            top_enc = self.train_dataset.get_best_k_paths(5)
+            top_enc = self.train_dataset.get_best_k_paths(self.config.encdec_optpaths)
             x, y, _, _, w = [q.to(self.device) for q in top_enc]
-            enc_dat = self.model.module.get_enc(x, y, y, w)
+            with torch.no_grad():
+                enc_dat = self.model.module.get_enc(x, y, y, w)
 
 
             if self.config.model_type == 'naive':
