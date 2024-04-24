@@ -196,7 +196,7 @@ elif args.block_type == "recc":
     trainer = TrainerRec(model, train_dataset, None, tconf)
 else:
     tconf.warmup_tokens = train_dataset.total_trainable_points
-    tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * 0.8)
+    tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * 1.1)
     tconf.jumper = args.jumper
     trainer = TrainerRecEnc(model, train_dataset, None, tconf)
 

@@ -530,7 +530,7 @@ class TrainerRecEnc:
                     if it % config.batch_accum == 0:
                         optimizer.zero_grad()
                     loss.backward()
-                    if (it+1) % config.batch_accum == 0:
+                    if (it+1) % config.batch_accum == 0 or it + 1 == len(loader):
                         self.wandbtoken += 1
                         if self.config.wandb_log and self.wandbtoken % 10 == 0:
                             logs = {}
