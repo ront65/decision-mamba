@@ -522,7 +522,7 @@ class TrainerRecEnc:
                     else:
                         loss = loss1
 
-                    loss = loss.mean()  # collapse all losses if they are scattered on multiple gpus
+                    loss = loss.mean() / config.batch_accum  # collapse all losses if they are scattered on multiple gpus
                     losses.append(loss.item())
 
                 if is_train:
