@@ -493,6 +493,7 @@ class TrainerRecEnc:
                                 num_workers=config.num_workers)
 
             losses = []
+            loss1list, loss2list = [], []
             pbar = tqdm(enumerate(loader), total=len(loader)) if is_train else enumerate(loader)
             for it, (x, y, r, m, w) in pbar:
 
@@ -521,7 +522,8 @@ class TrainerRecEnc:
                         loss = loss1 + loss2 * config.encdec_rtgs
                     else:
                         loss = loss1
-
+                    loss1list.append(loss1.item())
+                    loss2list.append(loss2.item())
                     loss = loss.mean() / config.batch_accum  # collapse all losses if they are scattered on multiple gpus
                     losses.append(loss.item())
 
@@ -537,11 +539,12 @@ class TrainerRecEnc:
                         self.accum_lr += currlr
                         if self.config.wandb_log and self.wandbtoken % 10 == 0:
                             logs = {}
-                            logs[f"train/loss1"] = loss1.item()
-                            logs[f"train/loss2"] = loss2.item() * config.encdec_rtgs
+                            logs[f"train/loss1"] = np.array(loss1list).mean()
+                            logs[f"train/loss2"] = np.array(loss2list).mean() * config.encdec_rtgs
                             logs[f"train/lr"] = currlr
                             logs[f"train/acumm_lr"] = self.accum_lr
                             wandb.log(logs)
+                            loss1list, loss2list = [], []
                         torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
                         optimizer.step()
 
@@ -563,7 +566,7 @@ class TrainerRecEnc:
                         lr = config.learning_rate
 
                     # report progress
-                    pbar.set_description(f"epoch {epoch + 1} iter {it}: train loss {loss.item():.5f}. lr {lr:e}")
+                    pbar.set_description(f"epoch {epoch + 1} iter {it}: train loss {loss.item() * config.batch_accum:.5f}. lr {lr:e}")
 
             if not is_train:
                 test_loss = float(np.mean(losses))
@@ -688,5 +691,5 @@ class TrainerRecEnc:
             logs = {}
             logs[f"eval/return_{enc_mode}_mean"] = np.array(T_rewards).mean()
             logs[f"eval/return_{enc_mode}_std"] = np.array(T_rewards).std()
-            wandb.log(logs)
+            wandb.log(logs, commit=False)
         return eval_return
