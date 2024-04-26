@@ -518,7 +518,7 @@ class GPT_DEC(nn.Module):
         #        self.ln_f = nn.LayerNorm(config.n_embd)
         self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
         self.enc_head = nn.Linear(config.n_embd, config.n_embd)
-        self.head_rtg = nn.Sequential(nn.Linear(2 * config.n_embd, 2 * config.n_embd), nn.GELU(), nn.Linear(2 * config.n_embd, 1))
+        self.head_rtg = nn.Sequential(nn.Linear(config.n_embd, 2 * config.n_embd), nn.GELU(), nn.Linear(2 * config.n_embd, 1))
 
         self.block_size = config.block_size
         self.apply(self._init_weights)
@@ -671,10 +671,9 @@ class GPT_DEC(nn.Module):
         #        x = self.ln_f(x)
         logits = self.head(x)[:, 0::3, :]
         if not self.config.encdec_keepgrad:
-            xp = torch.cat([x, token_embeddings + encode], dim=-1).detach()
+            xp = x.detach()
         else:
-            #xp = x
-            xp = torch.cat([x, token_embeddings + encode], dim=-1)
+            xp = x
         rtg_pred = self.head_rtg(xp)[:, 0::3, :]
 
         return logits, rtg_pred
@@ -733,8 +732,8 @@ class GPT_DEC(nn.Module):
                 z, new_mamba_states = self.blocks.step(x[:, jj, :].unsqueeze(1), new_mamba_states)
                 zz[:, jj, :] = z.squeeze(1)
             x = zz
-            #rtgs = self.head_rtg(x)
-            rtgs = self.head_rtg(torch.cat([x, token_embeddings + encode], dim=-1))
+            rtgs = self.head_rtg(x)
+            #rtgs = self.head_rtg(torch.cat([x, token_embeddings + encode], dim=-1))
             best = rtgs[:,-1,0].argmax()
             x = x[best, ...].unsqueeze(0)
             new_mamba_states = [[z[best, ...].unsqueeze(0) for z in q] for q in new_mamba_states]

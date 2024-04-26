@@ -21,7 +21,10 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--seed', type=int, default=123)
 parser.add_argument('--context_length', type=int, default=30)
 parser.add_argument('--epochs', type=int, default=5)
-parser.add_argument('--test_evals', type=int, default=10)
+parser.add_argument('--wd', type=float, default=0.1)
+parser.add_argument('--lr', type=float, default=6e-4)
+parser.add_argument('--lr_maxdecay', type=float, default=1.5)
+parser.add_argument('--test_evals', type=int, default=15)
 parser.add_argument('--jumper', type=int, default=15)
 parser.add_argument('--encdec_rtgs', type=float, default=0)
 parser.add_argument('--encdec_keepgrad', type=int, default=0)
@@ -35,7 +38,7 @@ parser.add_argument('--batch_accum', type=int, default=1)
 parser.add_argument('--dropout', type=float, default=0.1)
 parser.add_argument('--train_dropout', type=float, default=0)
 parser.add_argument('--num_layers', type=int, default=6)
-parser.add_argument('--block_type', type=str, default='transformer')
+parser.add_argument('--block_type', type=str, default='recc_enc')
 parser.add_argument('--wandb_group', type=str, default='')
 parser.add_argument('--wandb_log', type=int, default=1)
 #
@@ -182,11 +185,11 @@ print(f'ENC: num params: {num_params} ; num params that require grad: {num_param
 
 # initialize a trainer instance and kick off training
 epochs = args.epochs
-tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, batch_accum=args.batch_accum, learning_rate=6e-4,
+tconf = TrainerConfig(max_epochs=epochs, batch_size=args.batch_size, batch_accum=args.batch_accum, learning_rate=args.lr,
                       lr_decay=True, warmup_tokens=512*20, final_tokens=2*len(train_dataset)*args.context_length*3,
                       num_workers=4, seed=args.seed, model_type=args.model_type, game=args.game, max_timestep=max(timesteps),
                       train_dropout=args.train_dropout, test_evals=args.test_evals, encdec_rtgs=args.encdec_rtgs,
-                      wandb_log=args.wandb_log, encdec_optpaths=args.encdec_optpaths)
+                      wandb_log=args.wandb_log, encdec_optpaths=args.encdec_optpaths, weight_decay=args.wd)
 if args.block_type not in ["recc", "recc_enc"]:
     trainer = Trainer(model, train_dataset, None, tconf)
 elif args.block_type == "recc":
@@ -196,7 +199,7 @@ elif args.block_type == "recc":
     trainer = TrainerRec(model, train_dataset, None, tconf)
 else:
     tconf.warmup_tokens = train_dataset.total_trainable_points
-    tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * 1.1)
+    tconf.final_tokens = int(train_dataset.total_trainable_points * epochs * args.lr_maxdecay)
     tconf.jumper = args.jumper
     trainer = TrainerRecEnc(model, train_dataset, None, tconf)
 

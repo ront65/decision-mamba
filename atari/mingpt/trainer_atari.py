@@ -44,7 +44,7 @@ class TrainerConfig:
     learning_rate = 3e-4
     betas = (0.9, 0.95)
     grad_norm_clip = 1.0
-    weight_decay = 0.1 # only applied on matmul weights
+    #weight_decay = 0.1 # only applied on matmul weights
     # learning rate decay params: linear warmup followed by cosine decay to 10% of original
     lr_decay = False
     warmup_tokens = 375e6 # these two numbers come from the GPT-3 paper, but may not be good defaults elsewhere
@@ -478,6 +478,7 @@ class TrainerRecEnc:
 
     def train(self):
         self.wandbtoken = 0
+        self.accum_lr = 0
         model, config = self.model, self.config
         raw_model = model.module if hasattr(self.model, "module") else model
         optim_groups = raw_model.configure_optimizers(config)
@@ -532,10 +533,14 @@ class TrainerRecEnc:
                     loss.backward()
                     if (it+1) % config.batch_accum == 0 or it + 1 == len(loader):
                         self.wandbtoken += 1
+                        currlr = optimizer.param_groups[-1]['lr']
+                        self.accum_lr += currlr
                         if self.config.wandb_log and self.wandbtoken % 10 == 0:
                             logs = {}
                             logs[f"train/loss1"] = loss1.item()
                             logs[f"train/loss2"] = loss2.item() * config.encdec_rtgs
+                            logs[f"train/lr"] = currlr
+                            logs[f"train/acumm_lr"] = self.accum_lr
                             wandb.log(logs)
                         torch.nn.utils.clip_grad_norm_(model.parameters(), config.grad_norm_clip)
                         optimizer.step()
