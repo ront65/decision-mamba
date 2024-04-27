@@ -77,6 +77,7 @@ class MixerModel(nn.Module):
         rms_norm: bool = False,
         fused_add_norm=False,
         residual_in_fp32=False,
+        dropout=0,
     ) -> None:
 #        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -107,6 +108,9 @@ class MixerModel(nn.Module):
                 for i in range(n_layers)
             ]
         )
+        self.dropout = dropout
+        if self.dropout > 0:
+            self.dropout_layers = nn.ModuleList([nn.Dropout(dropout) for _ in range(n_layers)])
 
         self.norm_f = (nn.LayerNorm if not rms_norm else RMSNorm)(
             d_model, eps=norm_epsilon, #**factory_kwargs
@@ -115,10 +119,13 @@ class MixerModel(nn.Module):
     def forward(self, input_data, inference_params=None):
         hidden_states = input_data
         residual = None
-        for layer in self.layers:
+        for j, layer in enumerate(self.layers):
             hidden_states, residual = layer(
                 hidden_states, residual, inference_params=inference_params
             )
+            if self.dropout > 0:
+                hidden_states = self.dropout_layers[j](hidden_states)
+                residual = self.dropout_layers[j](residual)
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states
             hidden_states = self.norm_f(residual.to(dtype=self.norm_f.weight.dtype))
@@ -147,6 +154,9 @@ class MixerModel(nn.Module):
             hidden_states, residual, st1, st2 = layer.step(
                 hidden_states, mamba_states[i_lay], residual
             )
+            if self.dropout > 0:
+                hidden_states = self.dropout_layers[i_lay](hidden_states)
+                residual = self.dropout_layers[i_lay](residual)
             new_mamba_states.append([st1, st2])
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states
@@ -176,6 +186,7 @@ class BidirectMixerModel(nn.Module):
         rms_norm: bool = False,
         fused_add_norm=False,
         residual_in_fp32=False,
+        dropout=0,
     ) -> None:
 #        factory_kwargs = {"device": device, "dtype": dtype}
         super().__init__()
@@ -211,6 +222,9 @@ class BidirectMixerModel(nn.Module):
                 for i in range(n_layers)
             ]
         )
+        self.dropout = dropout
+        if self.dropout > 0:
+            self.dropout_layers = nn.ModuleList([nn.Dropout(dropout) for _ in range(n_layers)])
 
         self.norm_f = (nn.LayerNorm if not rms_norm else RMSNorm)(
             d_model, eps=norm_epsilon, #**factory_kwargs
@@ -229,6 +243,9 @@ class BidirectMixerModel(nn.Module):
             )
             hidden_states = hidden_states1 + hidden_states2
             residual = residual1 + residual2
+            if self.dropout > 0:
+                hidden_states = self.dropout_layers[jj](hidden_states)
+                residual = self.dropout_layers[jj](residual)
         if not self.fused_add_norm:
             residual = (hidden_states + residual) if residual is not None else hidden_states
             hidden_states = self.norm_f(residual.to(dtype=self.norm_f.weight.dtype))

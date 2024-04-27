@@ -512,8 +512,8 @@ class GPT_DEC(nn.Module):
         self.drop = nn.Dropout(config.embd_pdrop)
         self.enc_drop = nn.Dropout(config.embd_pdrop)
 
-        self.blocks = MixerModel(d_model=config.n_embd, n_layers=config.n_layer)
-        self.enc_blocks = BidirectMixerModel(d_model=config.n_embd, n_layers=2)
+        self.blocks = MixerModel(d_model=config.n_embd, n_layers=config.n_layer, dropout=config.embd_pdrop)
+        self.enc_blocks = BidirectMixerModel(d_model=config.n_embd, n_layers=2, dropout=config.embd_pdrop)
         # decoder head
         #        self.ln_f = nn.LayerNorm(config.n_embd)
         self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
