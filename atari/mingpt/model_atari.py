@@ -26,8 +26,6 @@ from torch.nn import functional as F
 
 logger = logging.getLogger(__name__)
 
-import numpy as np
-
 from mingpt.mamba_mixer import MixerModel
 
 class GELU(nn.Module):
@@ -130,12 +128,11 @@ class GPT(nn.Module):
 
         # input embedding stem
         self.tok_emb = nn.Embedding(config.vocab_size, config.n_embd)
-        # self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size, config.n_embd))
         self.pos_emb = nn.Parameter(torch.zeros(1, config.block_size + 1, config.n_embd))
         self.global_pos_emb = nn.Parameter(torch.zeros(1, config.max_timestep+1, config.n_embd))
         self.drop = nn.Dropout(config.embd_pdrop)
 
-        # transformer
+        # Core blocks
         assert config.block_type in ['transformer', 'mamba'], "argument block type must be either 'transformer' or 'mamba' "
         if config.block_type == "transformer":
             self.blocks = nn.Sequential(*(
@@ -145,7 +142,6 @@ class GPT(nn.Module):
         else:
             self.blocks = MixerModel(d_model = config.n_embd, n_layers = config.n_layer)
         # decoder head
-#        self.ln_f = nn.LayerNorm(config.n_embd)
         self.head = nn.Linear(config.n_embd, config.vocab_size, bias=False)
 
         self.block_size = config.block_size
@@ -269,7 +265,6 @@ class GPT(nn.Module):
 
         x = self.drop(token_embeddings + position_embeddings)
         x = self.blocks(x)
-#        x = self.ln_f(x)
         logits = self.head(x)
 
         if actions is not None and self.model_type == 'reward_conditioned':

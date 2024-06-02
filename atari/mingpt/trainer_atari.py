@@ -19,18 +19,13 @@ import logging
 from tqdm import tqdm
 import numpy as np
 
-import torch
 from torch.utils.data.dataloader import DataLoader
 
 logger = logging.getLogger(__name__)
 
 from mingpt.utils import sample, CustomFrameStack
-#import atari_py
-from collections import deque
 import random
-import cv2
 import torch
-
 
 import gymnasium as gym
 from gymnasium.wrappers.atari_preprocessing import AtariPreprocessing
@@ -84,7 +79,6 @@ class Trainer:
             worker_seed = torch.initial_seed() % 2**32
             np.random.seed(worker_seed)
             random.seed(worker_seed) 
-
 
         def run_epoch(split, epoch_num=0):
             is_train = split == 'train'
@@ -150,23 +144,11 @@ class Trainer:
                 logger.info("test loss: %f", test_loss)
                 return test_loss
 
-        # best_loss = float('inf')
-        
-        best_return = -float('inf')
-
         self.tokens = 0 # counter used for learning rate decay
 
         for epoch in range(config.max_epochs):
 
             run_epoch('train', epoch_num=epoch)
-            # if self.test_dataset is not None:
-            #     test_loss = run_epoch('test')
-
-            # # supports early stopping based on the test loss, or just save always if no test set is provided
-            # good_model = self.test_dataset is None or test_loss < best_loss
-            # if self.config.ckpt_path is not None and good_model:
-            #     best_loss = test_loss
-            #     self.save_checkpoint()
 
             # -- pass in target returns
             if self.config.model_type == 'naive':
@@ -201,7 +183,6 @@ class Trainer:
             sampled_action = sample(self.model.module, state, 1, temperature=1.0, sample=True, actions=None, 
                 rtgs=torch.tensor(rtgs, dtype=torch.long).to(self.device).unsqueeze(0).unsqueeze(-1), 
                 timesteps=torch.zeros((1, 1, 1), dtype=torch.int64).to(self.device))
-
             j = 0
             all_states = state
             actions = []

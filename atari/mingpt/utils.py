@@ -27,7 +27,6 @@ def set_seed(seed):
     torch.backends.cudnn.deterministic = True
     torch.backends.cudnn.benchmark = False
     torch.use_deterministic_algorithms(True)
-    #torch.utils.deterministic.fill_uninitialized_memory = True
     os.environ["CUBLAS_WORKSPACE_CONFIG"]=":4096:8"
 
     os.environ['PYTHONHASHSEED'] = str(seed)

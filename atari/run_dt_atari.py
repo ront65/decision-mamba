@@ -1,15 +1,10 @@
-import csv
 import logging
-# make deterministic
 from mingpt.utils import set_seed
 import numpy as np
-import torch
-from torch.nn import functional as F
 from torch.utils.data import Dataset
 from mingpt.model_atari import GPT, GPTConfig
 from mingpt.trainer_atari import Trainer, TrainerConfig
 import torch
-#import blosc
 import argparse
 from create_dataset import create_dataset
 
@@ -23,7 +18,7 @@ parser.add_argument('--num_buffers', type=int, default=50)
 parser.add_argument('--game', type=str, default='Breakout')
 parser.add_argument('--batch_size', type=int, default=128)
 parser.add_argument('--num_layers', type=int, default=6)
-parser.add_argument('--block_type', type=str, default='transformer')
+parser.add_argument('--block_type', type=str, default='mamba')
 # 
 parser.add_argument('--trajectories_per_buffer', type=int, default=10, help='Number of trajectories to sample from each of the buffers.')
 parser.add_argument('--data_dir_prefix', type=str, default='./dqn_replay/')
@@ -75,12 +70,10 @@ train_dataset = StateActionReturnDataset(obss, args.context_length*3, actions, d
 mconf = GPTConfig(train_dataset.vocab_size, train_dataset.block_size,
                   n_layer = args.num_layers, n_head=8, n_embd=128, 
                   model_type=args.model_type, max_timestep=max(timesteps), block_type=args.block_type)
-
 model = GPT(mconf)
 
 num_params_require_grad = sum(p.numel() for p in model.parameters() if p.requires_grad)
 num_params = sum(p.numel() for p in model.parameters())
-print(f'num params: {num_params} ; num params that require grad: {num_params_require_grad}')
 
 # initialize a trainer instance and kick off training
 epochs = args.epochs
