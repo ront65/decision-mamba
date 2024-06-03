@@ -1,4 +1,8 @@
+This repo presents a research project to test the potential of Mamba model for RL tasks.
+The research is summarized in the "research_summary.pdf" file.
+
 All run examples in this page should be run from the atari directory.
+
 ## Downloading datasets
 In order to run the code, one has to dowload the dqn-replay data set.
 To do so, first you need to have gsutil installed. Instructions for installing gsutil can be found [here](https://cloud.google.com/storage/docs/gsutil_install#install).
